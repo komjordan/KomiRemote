@@ -38,6 +38,7 @@ def validate_driver(root, inf_name):
     text = raw.decode('utf-16') if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else raw.decode('utf-8-sig', errors='strict')
     section = ''
     catalogs, sources = [], []
+    disks = {}
     for line in text.splitlines():
         line = line.split(';', 1)[0].strip()
         if line.startswith('[') and line.endswith(']'):
@@ -46,15 +47,39 @@ def validate_driver(root, inf_name):
             key, value = (x.strip() for x in line.split('=', 1))
             if section == 'version' and re.fullmatch(r'catalogfile(?:\..+)?', key.casefold()):
                 catalogs.append(value)
-            elif section == 'sourcedisksfiles' or section.startswith('sourcedisksfiles.'):
-                # Field two is an optional source subdirectory. Other fields are sizes/flags.
+            elif section in ('sourcedisksnames', 'sourcedisksnames.amd64'):
+                fields = value.split(',')
+                # INF disk-root paths use one leading backslash, relative to media.
+                disk_root = fields[3].strip().strip('"') if len(fields) > 3 else ''
+                if disk_root.startswith('\\\\'):
+                    raise ValueError('UNC disk-root path is unsupported')
+                disk_root = disk_root.removeprefix('\\')
+                path = PureWindowsPath(disk_root)
+                if path.drive or path.root or '..' in path.parts or ':' in disk_root or '%' in disk_root:
+                    raise ValueError(f'Unsafe or indirect INF disk-root path: {disk_root}')
+                entries = disks.setdefault(section, {})
+                if key in entries:
+                    raise ValueError(f'Duplicate INF disk identifier: {key}')
+                entries[key] = disk_root
+            elif section in ('sourcedisksfiles', 'sourcedisksfiles.amd64'):
+                # Check the x64 payload only; Win32 is intentionally pruned later.
                 fields = value.split(',')
                 subdir = fields[1].strip().strip('"') if len(fields) > 1 else ''
-                sources.append(str(PureWindowsPath(subdir) / key.strip('"')))
+                sources.append((fields[0].strip(), subdir, key.strip('"')))
     if not catalogs or not sources:
         raise ValueError(f'Unreviewed INF layout (catalog/source list missing): {inf_name}')
-    for name in catalogs + sources:
+    for name in catalogs:
         windows_file(root, name)
+    for disk, subdir, name in sources:
+        locations = {**disks.get('sourcedisksnames', {}), **disks.get('sourcedisksnames.amd64', {})}
+        if disks and disk not in locations:
+            raise ValueError(f'Unknown INF source disk: {disk}')
+        # Validate each part separately: an absolute subdir must not discard disk_root.
+        for component in (subdir, name):
+            path = PureWindowsPath(component)
+            if path.drive or path.root or '..' in path.parts or ':' in component or '%' in component:
+                raise ValueError(f'Unsafe or indirect INF source: {component}')
+        windows_file(root, str(PureWindowsPath(locations.get(disk, '')) / subdir / name))
 
 
 def validate_install_manifest(bundle, manifest):

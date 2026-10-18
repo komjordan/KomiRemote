@@ -95,6 +95,29 @@ class AssetSafetyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 ASSEMBLE.validate_driver(root, 'usbmmIdd.inf')
 
+    def test_inf_resolves_official_usb_amd64_disk_root(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
+            root = Path(tmp)
+            inf = root / 'usbmmIdd.inf'
+            # Minimal shape of official asset 180784412; no driver is executed.
+            inf.write_text('[Version]\nCatalogFile=usb.cat\n[SourceDisksFiles]\nusbmmIdd.dll=1\n'
+                           '[SourceDisksNames.x86]\n1=%DiskId%,,,\\Win32\n'
+                           '[SourceDisksNames.amd64]\n1=%DiskId%,,,\\x64\n')
+            (root / 'usb.cat').write_bytes(b'fixture')
+            (root / 'x64').mkdir()
+            driver = root / 'x64/usbmmIdd.dll'
+            driver.write_bytes(b'fixture')
+            ASSEMBLE.validate_driver(root, 'usbmmIdd.inf')
+            driver.unlink()
+            (root / 'usbmmIdd.dll').write_bytes(b'wrong root must not mask missing x64')
+            with self.assertRaises(FileNotFoundError):
+                ASSEMBLE.validate_driver(root, 'usbmmIdd.inf')
+            for path in ('\\..\\escape', 'C:\\escape', '\\\\host\\share', '%Unresolved%'):
+                inf.write_text('[Version]\nCatalogFile=usb.cat\n[SourceDisksFiles]\nusb.dll=1\n'
+                               '[SourceDisksNames.amd64]\n1=Disk,,,' + path + '\n')
+                with self.assertRaises(ValueError):
+                    ASSEMBLE.validate_driver(root, 'usbmmIdd.inf')
+
     def test_cmake_manifest_checks_actual_plugin_and_crt_outputs(self):
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
             root = Path(tmp)

@@ -1,6 +1,38 @@
 # Essai Windows x64 manuel — sécurité, recette et limites
 
-## État réel
+## Autorisation bootstrap et baseline du 18 octobre 2026
+
+L'utilisateur autorise explicitement le téléchargement des quatre assets officiels,
+y compris engine/USB **sans digest éditeur**, le calcul et gel d'une baseline avec
+provenance, l'intégration sur `main` du seul workflow et de ses helpers/docs/tests,
+puis **un dispatch manuel de test sur `work/komiremote-branding`**. Aucun merge du
+branding (PR #1), release, tag, distribution ou lancement du client n'est autorisé.
+Cette décision remplace le prérequis historique B1 d'« approbation indépendante »
+ci-dessous : il s'agit d'une **baseline de provenance autorisée, pas d'un audit
+indépendant**, d'une signature ou d'une validation de sûreté.
+
+Voir [NATIVE-ASSET-BASELINE.json](NATIVE-ASSET-BASELINE.json) pour les quatre SHA256,
+IDs API, URLs officielles, dates UTC et tailles réellement téléchargées. Les deux
+digests éditeur disponibles (printer/adapter) ont été comparés aux octets avec
+succès ; engine/USB restent explicitement sans digest éditeur. Aucun binaire de
+ces archives n'a été exécuté. Après vérification SHA, extraction en scratch et
+contrôle de présence des routes INF/catalogue/sources USB/imprimante effectués ;
+USB a aussi été contrôlé après retrait des helpers/Win32. Un bug réel du helper
+sur `SourceDisksNames.amd64` → `\\x64` a été reproduit en RED puis corrigé/testé.
+Ces contrôles ne valident pas les signatures, l'ABI ni le comportement des pilotes.
+
+La PR bootstrap utilise un commit `[skip ci]` pour ne pas lancer les workflows PR
+upstream actifs `CI`/`Full Flutter CI`. Ce marqueur n'empêche pas le dispatch manuel
+ciblé. Aucun workflow upstream, protection, réglage ou secret n'est modifié. Le
+workflow manuel et ses helpers sur la ref de build doivent correspondre aux octets
+revus ; le SHA exact du run est enregistré dans le statut externe durable.
+
+Le statut d'exécution courant, les handles PR/merge/run et les éventuels refus de
+droits sont consignés dans `/home/hermes/projects/komiremote-implementation-status.md`.
+Aucun binaire Windows n'est présenté comme validé ; les sections ci-dessous sont
+la recette et les limites historiques, non une preuve d'exécution.
+
+## État historique avant cette autorisation
 
 Le workflow `.github/workflows/komiremote-windows-test.yml` est **préparé localement,
 non exécuté**. Aucun EXE, MSI, artefact Actions ou résultat Windows n'a été produit
@@ -230,7 +262,11 @@ actionlint -shellcheck='' .github/workflows/komiremote-windows-test.yml
 git diff --check
 ```
 
-Résultats de la correction : voir [VALIDATION.md](VALIDATION.md), section revue CI.
+Vérifications bootstrap réellement relancées : 14 tests Python réussis (contrat
+workflow et fixtures ZIP/INF/payload), actionlint 1.7.7 sans diagnostic (ShellCheck
+non inclus), 11 blocs shell contrôlés par `bash -n`, 5 snippets Python parsés,
+helpers Python parsés, `git diff --check` réussi. Ces contrôles ne sont ni une
+compilation Windows ni une validation des binaires.
 Cycles RED→GREEN observés pour SHA512/NASM, payload incomplet, nom d'EXE distinct,
 INF/manifeste CMake, repli ZIP et contenu du ZIP. Aucune commande de build Windows,
 génération bridge ou dispatch CI n'a été exécutée ; PowerShell/dumpbin non exercés.
