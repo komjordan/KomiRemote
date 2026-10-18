@@ -1,6 +1,12 @@
 """Static safety contract, not a Windows build. Requires PyYAML 6.0.2."""
 from pathlib import Path
 import re
+import os
+import subprocess
+import sys
+import json
+import tempfile
+import zipfile
 import unittest
 import yaml
 
@@ -38,13 +44,77 @@ class ManualWorkflowTests(unittest.TestCase):
                          '--enforce-lockfile', 'git diff --exit-code -- Cargo.lock flutter/pubspec.lock',
                          'cargo-expand --version 1.0.95 --locked',
                          'flutter_rust_bridge_codegen --version 1.80.1',
-                         'brotli==1.1.0', 'ecd8d6a139eee76845ea66423fb739af450fda90',
-                         'generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe'):
+                         'ecd8d6a139eee76845ea66423fb739af450fda90'):
             self.assertIn(required, all_runs)
 
     def test_referenced_build_helpers_exist(self):
-        for name in ('fetch_assets.py', 'assemble.py'):
+        for name in ('fetch_assets.py', 'assemble.py', 'provision_nasm.py', 'inspect_imports.ps1'):
             self.assertTrue((ROOT / '.github/komiremote' / name).is_file(), name)
+        self.assertTrue((ROOT / 'docs/komiremote/NOT-STANDALONE.txt').is_file())
+        inspection = (ROOT / '.github/komiremote/inspect_imports.ps1').read_text()
+        for flag in ('/DEPENDENTS', '/IMPORTS', '/HEADERS'):
+            self.assertIn(flag, inspection)
+        self.assertIn('$LASTEXITCODE', inspection)
+
+    def test_verified_nasm_preflight_precedes_native_build(self):
+        w = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+        runs = '\n'.join(s.get('run', '') for s in w['jobs']['windows']['steps'])
+        self.assertIn('python .github/komiremote/provision_nasm.py', runs)
+        self.assertLess(runs.index('provision_nasm.py'), runs.index('nasm -v'))
+        self.assertLess(runs.index('nasm -v'), runs.index('vcpkg.exe" install'))
+        self.assertIn('command -v nasm', runs)
+        self.assertIn('os.path.samefile', runs, 'verify exported PATH resolves the verified NASM, not an image tool')
+        preflight = next(s['run'] for s in w['jobs']['windows']['steps']
+                         if 'os.path.samefile' in s.get('run', ''))
+        match = re.search(r"python - <<'PY'\n(.*?)\nPY", preflight, re.S)
+        assert match is not None
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
+            root = Path(tmp)
+            (root / 'komiremote-test-output').mkdir()
+            for label in ('verified', 'other'):
+                (root / label).mkdir()
+                # A path-resolution fixture, not a NASM executable. Never launched.
+                stub = root / label / ('nasm.exe' if os.name == 'nt' else 'nasm')
+                stub.write_bytes(b'fixture')
+                stub.chmod(0o700)
+            expected = root / 'verified' / stub.name
+            (root / 'komiremote-test-output/nasm.json').write_text(json.dumps({'executable': str(expected)}))
+            for label, returncode in (('verified', 0), ('other', 1)):
+                result = subprocess.run([sys.executable, '-c', match.group(1)], cwd=root,
+                                        env={**os.environ, 'PATH': str(root / label)},
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, returncode, result.stderr)
+
+    def test_only_non_standalone_zip_until_windows_dependency_validation(self):
+        text = WORKFLOW.read_text()
+        self.assertNotIn('python generate.py', text)
+        self.assertNotIn('rustdesk-portable-packer.exe', text)
+        self.assertNotIn('unsigned.exe', text)
+        self.assertIn('bundle-x64-unsigned-NOT-STANDALONE', text)
+        self.assertIn('shutil.make_archive', text)
+        self.assertIn('NOT-STANDALONE.txt', text)
+        self.assertIn('inspect_imports.ps1', text)
+
+    def test_zip_step_packages_only_distinct_komiremote_namespace(self):
+        w = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+        run = next(s['run'] for s in w['jobs']['windows']['steps']
+                   if 'shutil.make_archive' in s.get('run', ''))
+        match = re.search(r"python - <<'PY'\n(.*?)\nPY", run, re.S)
+        assert match is not None
+        snippet = match.group(1)
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
+            root = Path(tmp)
+            (root / 'KomiRemote').mkdir()
+            (root / 'komiremote-test-output').mkdir()
+            for name in ('KomiRemote.exe', 'librustdesk.dll', 'NOT-STANDALONE.txt'):
+                (root / 'KomiRemote' / name).write_bytes(b'fixture, never executed')
+            result = subprocess.run([sys.executable, '-c', snippet], cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            archive, = (root / 'komiremote-test-output').glob('*.zip')
+            with zipfile.ZipFile(archive) as z:
+                self.assertTrue(all(n.startswith('KomiRemote/') for n in z.namelist()))
+                self.assertIn('KomiRemote/KomiRemote.exe', z.namelist())
+                self.assertIn('KomiRemote/librustdesk.dll', z.namelist())
 
     def test_manual_readonly_artifacts_only(self):
         self.assertTrue(WORKFLOW.exists(), 'dedicated manual workflow missing')

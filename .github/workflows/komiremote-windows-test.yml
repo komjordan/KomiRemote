@@ -154,6 +154,34 @@ jobs:
           targets: x86_64-pc-windows-msvc
           components: rustfmt
       - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+      - name: Provision checksum-pinned NASM before native builds
+        run: python .github/komiremote/provision_nasm.py
+      - name: Preflight tools before expensive native dependency build
+        run: |
+          set -euo pipefail
+          {
+            git rev-parse HEAD
+            git submodule status --recursive
+            rustc --version
+            cargo --version
+            flutter --version
+            python --version
+            python -m pip --version
+            clang --version
+            cmake --version
+            command -v nasm
+            nasm -v
+            msbuild -version
+          } > komiremote-test-output/tools.txt
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          expected = json.loads(Path('komiremote-test-output/nasm.json').read_text())['executable']
+          actual = shutil.which('nasm')
+          if not actual or not os.path.samefile(actual, expected):
+              raise SystemExit(f'PATH did not resolve checksum-verified NASM: {actual!r} != {expected!r}')
+          print(f'PATH resolves verified NASM: {actual}')
+          PY
       - name: Fetch approved native assets (SHA256 enforced before extraction)
         run: python .github/komiremote/fetch_assets.py
       - name: Prepare patched x64 engine and Flutter SDK
@@ -177,20 +205,9 @@ jobs:
           "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           "$VCPKG_ROOT/vcpkg.exe" install --triplet x64-windows-static --x-install-root="$VCPKG_ROOT/installed" --disable-metrics
           {
-            git rev-parse HEAD
-            git submodule status --recursive
-            rustc --version
-            cargo --version
-            flutter --version
-            python --version
-            python -m pip --version
-            clang --version
-            cmake --version
-            nasm -v
-            msbuild -version
             "$VCPKG_ROOT/vcpkg.exe" version
             "$VCPKG_ROOT/vcpkg.exe" list
-          } > komiremote-test-output/tools.txt
+          } >> komiremote-test-output/tools.txt
       - name: Build WindowInjection from upstream pinned source
         run: |
           set -euo pipefail
@@ -206,25 +223,19 @@ jobs:
           git diff --exit-code -- Cargo.lock flutter/pubspec.lock flutter/pubspec.yaml
           mv flutter/build/windows/x64/runner/Release rustdesk
           python .github/komiremote/assemble.py
-      - name: Build unsigned self-extracting portable (never execute it)
+      - name: Record PE imports without executing payload (not dependency closure proof)
+        shell: pwsh
+        run: ./.github/komiremote/inspect_imports.ps1
+      - name: Archive unsigned non-standalone bundle only (no portable wrapper)
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check --only-binary=:all: brotli==1.1.0
+          mv rustdesk KomiRemote
+          cp docs/komiremote/NOT-STANDALONE.txt KomiRemote/
+          cp LICENCE KomiRemote/
           python - <<'PY'
-          from pathlib import Path
           import shutil
-          assert Path('libs/portable/requirements.txt').read_text().strip() == 'brotli'
-          candidates = sorted(Path('flutter/build/windows').rglob('Runner.res'))
-          if len(candidates) != 1:
-              raise SystemExit(f'Expected exactly one Runner.res, found {len(candidates)}')
-          shutil.copy2(candidates[0], 'libs/portable/Runner.res')
-          p = Path('res/manifest.xml')
-          p.write_text(''.join(line for line in p.read_text().splitlines(keepends=True) if 'dpiAware' not in line))
+          shutil.make_archive('komiremote-test-output/KomiRemote-bundle-x64-unsigned-NOT-STANDALONE', 'zip', root_dir='.', base_dir='KomiRemote')
           PY
-          (cd libs/portable && python generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe)
-          test -s target/release/rustdesk-portable-packer.exe
-          cp target/release/rustdesk-portable-packer.exe komiremote-test-output/KomiRemote-test-windows-x64-unsigned.exe
-          mv rustdesk komiremote-test-output/bundle
           cp .komiremote-downloads/verified-sha256.json komiremote-test-output/
           cp LICENCE komiremote-test-output/
           python -m pip freeze > komiremote-test-output/python-packages.txt
@@ -240,7 +251,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: success()
         with:
-          name: KomiRemote-test-windows-x64-unsigned-${{ github.sha }}
+          name: KomiRemote-bundle-x64-unsigned-NOT-STANDALONE-${{ github.sha }}
           path: komiremote-test-output/
           retention-days: 7
           if-no-files-found: error

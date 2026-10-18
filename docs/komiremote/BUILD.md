@@ -15,7 +15,7 @@ Les références exactes sont les fichiers upstream conservés :
 Un essai **manuel uniquement**, sans release ni secrets, est maintenant préparé dans
 `.github/workflows/komiremote-windows-test.yml` : voir
 [CI-WINDOWS-TEST.md](CI-WINDOWS-TEST.md) pour les quatre empreintes approuvées
-obligatoires, le portable complet, les tests statiques et les risques des CI upstream.
+obligatoires, le bundle ZIP **non autonome**, les tests locaux et les risques des CI upstream.
 Il n'a pas été exécuté : aucun résultat Windows ne peut en être déduit.
 Les commandes suivantes sont une recette de préparation **non exécutée ici**,
 à utiliser dans une copie jetable sur un runner Windows explicitement autorisé.
@@ -31,6 +31,7 @@ Les commandes suivantes sont une recette de préparation **non exécutée ici**,
 | LLVM | 15.0.6 |
 | vcpkg | `9e593bb18ea69cc5095e012465dcd675a822ed0d` |
 | Triplet | `x64-windows-static` |
+| NASM CI | 3.01 win64, SHA512 de la recette vcpkg épinglée (voir CI-WINDOWS-TEST.md) |
 | flutter_rust_bridge_codegen | 1.80.1, feature `uuid` |
 | cargo-expand | 1.0.95 |
 | MSI (non adapté Komi) | WiX SDK/extensions/WcaUtil/DUtil 4.0.5, NuGet |
@@ -97,16 +98,18 @@ Capturer les logs, outils réellement utilisés et empreintes du bundle.
 
 ### Packaging : restant à adapter, pas un livrable
 
-Le workflow ajoute pilotes/usbmmidd/WindowInjection.dll et appelle ensuite
-`libs/portable/generate.py` avec l'entrée `rustdesk/rustdesk.exe`. Les téléchargements
-mutables et leurs licences doivent être inventoriés. Les noms de sortie Komi,
-l'absence de comportement de service implicite et les métadonnées du wrapper
-ne sont pas validés par un simple build du runner.
+Le workflow ajoute pilotes/usbmmidd/WindowInjection.dll, contrôle les fichiers
+consommés et le manifeste CMake, renomme le runner assemblé `KomiRemote.exe`
+sans changer `librustdesk.dll`/FFI, puis ne produit qu'un ZIP **NOT-STANDALONE**.
+Il n'appelle plus `libs/portable/generate.py` : CRT/fermeture DLL de WindowInjection
+et validation Windows restent bloquants. Voir CI-WINDOWS-TEST.md pour NASM 3.01
+vérifié par SHA512 avant vcpkg, rapports PE préparés et critères VM propre.
+Un renommage testé en fixture n'est pas une preuve de fonctionnement Windows.
 
 **Ne pas générer/distribuer un MSI Komi avec la recette stock.**
-`res/msi/preprocess.py --app-name KomiRemote` attendrait `KomiRemote.exe`, inexistant
-avec cette tranche ; appeler la recette stock avec RustDesk mélangerait les
-identités. Le préprocesseur substitue aussi automatiquement des termes de l'EULA :
+`res/msi/preprocess.py --app-name KomiRemote` attendrait `KomiRemote.exe` et
+l'exécuterait ; l'EXE renommé du ZIP ne valide pas ce chemin MSI. Appeler la recette
+stock avec RustDesk mélangerait les identités. Le préprocesseur substitue aussi automatiquement des termes de l'EULA :
 revue juridique et technique nécessaire. Tester UpgradeCode, isolation, installation,
 désinstallation et reboot avant tout installateur.
 

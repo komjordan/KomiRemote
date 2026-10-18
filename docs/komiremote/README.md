@@ -3,7 +3,7 @@
 Fork indépendant de [RustDesk](https://github.com/rustdesk/rustdesk), base
 `fada664df7a294d1d1a9ca3e7cd3637069122f17` (1.5.0).
 Cette tranche est du **code source expérimental**, pas une distribution Windows validée.
-Aucun push, release, workflow, serveur de production ou service persistant n'est modifié.
+Aucun push, release ou dispatch ; aucun serveur de production ou service persistant modifié.
 
 ## Ce qui change
 
@@ -20,9 +20,11 @@ Aucun push, release, workflow, serveur de production ou service persistant n'est
 - Identité technique Windows : **KomiRemote**, sans espace, via `APP_NAME`.
   Les profils/configurations, IPC et noms d'installation sont ainsi distincts de
   RustDesk. Il n'y a pas de migration automatique du profil RustDesk.
-- Les EXE de build restent **rustdesk.exe** ; DLL, symboles FFI, crates, drivers,
-  CMake et scripts d'empaquetage gardent leurs noms upstream. Aucun renommage
-  global : nom runtime et nom de fichier ne sont pas la même notion.
+- Les EXE de build restent **rustdesk.exe** ; le workflow manuel renomme seulement
+  le runner assemblé **KomiRemote.exe** dans un ZIP `KomiRemote/` non autonome.
+  DLL, symboles FFI, crates, drivers et CMake gardent leurs noms upstream.
+  Aucun auto-extractible tant que le runtime/CRT n'est pas validé sur Windows.
+  Aucun renommage global : nom runtime et nom de fichier ne sont pas la même notion.
   Titres/menus utilisant l'identité technique affichent encore `KomiRemote`.
 - Défauts publics Windows, modifiables dans les paramètres existants :
 

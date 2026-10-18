@@ -1,5 +1,71 @@
 # Validation de la tranche
 
+## Correction de la revue CI — état local actuel
+
+- Branche `work/komiremote-branding`, rapport complet
+  `/home/hermes/projects/komiremote-ci-review.md` lu avant modifications.
+  Sources workflow/helpers/packer/FFI/CMake et routes INF relues ; sources publiques
+  NASM/vcpkg et WindowInjection consultées au SHA exact (pas de `latest`).
+- **B1 maintenu** : quatre SHA256 approuvés exigés avant téléchargement/extraction.
+  Engine/USB sans digest officiel dans l'instantané de revue : décision humaine
+  documentée indispensable. Les digests officiels printer/adapter ne sont pas une
+  approbation indépendante. Aucun input par défaut, checksum inventé ou dérogation.
+- **B2 corrigé dans la recette, non exécuté sous Windows** : NASM 3.01 provisionné
+  explicitement, SHA512 issu de vcpkg épinglé, extraction après vérification,
+  version contrôlée par chemin absolu, export `GITHUB_PATH`, vérification `samefile`
+  du NASM résolu puis préflight avant vcpkg. Le snippet de résolution est exercé
+  sous Linux avec chemins correct/incorrect factices, sans exécuter NASM.
+  Réellement vérifié sur Linux : recette publique version/hash concordants,
+  téléchargement ZIP NASM officiel, SHA512 concordant, présence `nasm-3.01/nasm.exe`
+  et en-tête de fichier `MZ`. Aucun EXE NASM exécuté, scratch supprimé après contrôle.
+- **R2 renforcé** : ICU/AOT/manifest/assets non vides, sorties réelles du manifeste
+  CMake dont plugins/CRT installés, INF exacts runtime et fichiers CatalogFile /
+  SourceDisksFiles avant/après retrait USB helpers. Tests négatifs retirant les
+  vrais chemins requis et test anti-traversée INF. Le parseur INF conservateur
+  échoue sur layouts inconnus ; ce n'est pas une validation SetupAPI/catalogue signé.
+- **R3 isolé au packaging** : runner assemblé `KomiRemote.exe`, DLL/FFI inchangés,
+  dossier ZIP `KomiRemote/`. Test réel du snippet ZIP en fixture et relecture des
+  membres ; aucun wrapper auto-extractible ni suppression de localappdata par le
+  packaging. Le stem serait `komiremote`, pas `rustdesk`, pour un futur wrapper revu.
+  Coexistence et démarrage Windows encore non testés.
+- **R1 non résolu sans Windows** : aucun `/MT`, retargeting ou CRT redistribué par
+  supposition. v142 et CRT de WindowInjection à vérifier sur le résultat réel.
+  Script de collecte dumpbin préparé (headers, imports normaux/différés), sans
+  exécution du payload ; pas de preuve de fermeture DLL. Le workflow est limité
+  à `KomiRemote-bundle-x64-unsigned-NOT-STANDALONE.zip`, avertissement inclus.
+- Cycles **RED→GREEN observés** avant corrections : support SHA512/NASM manquant,
+  payload incomplet accepté, runner non renommé, validateurs INF/CMake absents,
+  contrat ZIP non autonome et dossier ZIP non isolé. Les tests n'ont pas été
+  présentés comme un démarrage Windows ou une attestation de sécurité.
+
+### Vérifications relancées réellement
+
+- `PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -p 'test_komiremote*.py' -v` :
+  **18 tests réussis**, fixtures de données uniquement ; le snippet de création
+  ZIP du workflow est réellement exécuté et ses noms internes contrôlés.
+- `actionlint 1.7.7 -shellcheck='' .github/workflows/komiremote-windows-test.yml` :
+  succès sans diagnostic ; ShellCheck non exécuté.
+- YAML `BaseLoader`, **11 blocs bash** vérifiés par `bash -n`, **5 snippets Python**
+  et helpers Python vérifiés par AST. Le script PowerShell n'a pas été exécuté
+  ou parsé par PowerShell (absent ici) ; seules assertions source statiques.
+- `rustc 1.75.0 --edition=2021 --test tests/komiremote_defaults.rs` : **3 tests réussis** ;
+  `rustfmt --check` des deux sources de defaults et `git diff --check` : succès.
+  Outils scratch existants utilisés, aucun profil/toolchain global modifié.
+- Aucun build Cargo/Flutter/Windows, client/driver/installateur exécuté, dispatch,
+  push/merge/release, accès aux secrets, VPS ou Proxmox. Les deux assets sans
+  digest n'ont pas été téléchargés pour créer un faux feu vert.
+
+### Blocages de sortie
+
+Avant CI : décision humaine B1, autorisation distincte, ref exacte revue et examen
+séparé des triggers upstream. Sur Windows : preuve NASM/PATH/v142, builds effectifs,
+validation des layouts natifs approuvés et du script dumpbin. Avant autonomie ou
+distribution : stratégie CRT/licences revue et fermeture/chargement DLL, VM propre
+sans VS, privacy/pilotes, profil isolé puis coexistence RustDesk, consentement,
+services, réseau/chiffrement et signatures. **Aucun portable autonome validé.**
+Les sections suivantes sont l'historique de la première tranche, pas des preuves
+supplémentaires de cette correction CI.
+
 ## Exécuté réellement sur Linux
 
 - Lecture complète du cahier des charges, LISEZMOI du pack et audit préalable.

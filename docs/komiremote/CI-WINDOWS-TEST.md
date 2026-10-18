@@ -5,7 +5,15 @@
 Le workflow `.github/workflows/komiremote-windows-test.yml` est **préparé localement,
 non exécuté**. Aucun EXE, MSI, artefact Actions ou résultat Windows n'a été produit
 ou validé dans cette tranche. Les contrôles locaux portent sur le YAML et sur des
-fixtures ZIP/payload explicitement factices, jamais sur un binaire Windows réel.
+fixtures ZIP/payload explicitement factices. Exception ciblée : l'archive officielle
+NASM 3.01 a été téléchargée comme donnée, vérifiée contre le SHA512 du vcpkg épinglé
+et extraite en scratch ; son EXE n'a jamais été exécuté.
+
+**Sortie limitée à un bundle ZIP non autonome**, pas d'auto-extractible. La fermeture
+DLL/CRT de WindowInjection et le runtime Windows ne sont pas validés. Le nom
+`NOT-STANDALONE` et l'avertissement embarqué sont obligatoires. Les findings de
+`/home/hermes/projects/komiremote-ci-review.md` restent historiques ; ce document
+indique la réponse locale, sans lever les blocages humains ni autoriser un run.
 
 Ce fichier est indépendant des workflows upstream : aucun `workflow_call` vers
 `flutter-build.yml`, `bridge.yml` ou le workflow tiers. Leurs recettes ont été
@@ -24,8 +32,8 @@ architectures, les signatures et leurs caches partagés.
   épinglées. Pas de cache Rust/Flutter/vcpkg partagé ni export de runtime token.
 - Pas de commit, push, release, signature, MSI, installateur exécuté, lancement du
   client compilé, service lancé/installé, accès VPS/Proxmox ou secrets locaux.
-  `git restore`, la modification temporaire du manifeste et l'édition du manifest
-  DPI ont lieu uniquement dans les checkouts jetables du runner.
+  `git restore` et la modification temporaire du manifeste Dart ont lieu uniquement
+  dans les checkouts jetables du runner. Aucun packer ni patch du manifest DPI.
 - Les compilateurs, scripts de build des dépendances et actions exécutent du code :
   ceci n'est pas un sandbox hostile. Utiliser uniquement les runners GitHub hébergés
   nommés, jamais un runner de production/self-hosted avec identifiants.
@@ -47,6 +55,12 @@ architectures, les signatures et leurs caches partagés.
    calculé sur un téléchargement du même run ou sur `sha256sums` du même tag mutable
    ne constitue pas une approbation indépendante. Conserver l'origine et la revue
    des digests hors de la simple saisie Actions.
+   **Blocage B1 maintenu** : selon la revue, engine (asset `210168939`) et USB
+   (`180784412`) ont un digest API `null`. Printer (`276730335`) et adapter
+   (`328545268`) ont des digests officiels, pas une approbation indépendante.
+   Aucun des quatre inputs n'est prérempli. Une décision humaine documentée sur
+   les quatre assets et une méthode acceptable pour les deux absents restent requises.
+   Le préflight 64-hex ne prouve jamais cette décision.
 3. Après autorisation et mise à disposition du workflow sur la branche par défaut
    (condition GitHub pour la disponibilité de `workflow_dispatch`), choisir
    explicitement une ref revue. Contrôler son SHA dans le run. Ne pas lancer
@@ -92,57 +106,93 @@ confiance à auditer. Aucun client ou installateur du payload n'est exécuté.
    vcpkg est cloné sans credentials persistés et sans cache ; bootstrap/métriques
    désactivées, packages du manifeste/overlays installés normalement.
    `CMake 4.3.0` dans l'environnement n'est pas une preuve du CMake effectif :
-   `tools.txt` enregistre les versions disponibles/résolues. NASM, CMake et MSBuild
-   proviennent de l'image Windows ; absence d'un outil = échec, pas d'installation
-   silencieuse d'une version arbitraire.
+   `tools.txt` enregistre les versions disponibles/résolues, pas tous les compilateurs
+   effectivement employés par Flutter/vcpkg. CMake/MSBuild restent ceux de l'image.
+   **NASM 3.01** est provisionné explicitement par `provision_nasm.py` avant vcpkg :
+   ZIP officiel win64, SHA512 vérifié avant extraction, `nasm.exe -v` vérifié par
+   chemin absolu, répertoire ajouté à `GITHUB_PATH`. Le step suivant enregistre
+   `command -v nasm` et `nasm -v`, puis vérifie par `samefile` que le PATH résout
+   bien le fichier validé, avant le build natif long. Tout échec est bloquant.
+   `nasm.json` conserve URL/hash/version/chemin/provenance. Le pin vient de
+   [la recette NASM du vcpkg épinglé](https://github.com/microsoft/vcpkg/blob/9e593bb18ea69cc5095e012465dcd675a822ed0d/scripts/cmake/vcpkg_find_acquire_program(NASM).cmake) :
+   `771c238ddb17c98d5736ccaba4ade1d1601d896f09e588489cb43a4f6381bc0ae14d1869f5316fe94f847f54867e65cf12665529b1e7ad88e5e7d3e162719a4f`.
+   Source/version/hash et octets de l'archive ont été comparés réellement sous Linux ;
+   l'exécution de NASM et l'export du PATH restent à exercer sur Windows.
+   Ce pin d'outil n'est pas une approbation des quatre payloads natifs.
 3. Téléchargement des quatre assets approuvés ; remplacement du moteur release
    x64 dans le SDK, puis patch SDK upstream
    `flutter_3.24.4_dropdown_menu_enableFilter.diff` avec contrôle `git apply --check`.
 4. Construction `WindowInjection.dll` par MSBuild Release/x64/Windows10 depuis
    **ecd8d6a139eee76845ea66423fb739af450fda90**. Pas de téléchargement de DLL
-   non épinglée ni appel au workflow tiers upstream.
+   non épinglée ni appel au workflow tiers upstream. Le projet requiert v142 ; sa
+   disponibilité réelle reste à prouver sur le runner. Aucune réorientation v143
+   ou surcharge `/MT` non validée n'est appliquée. Voir blocage CRT ci-dessous.
 5. `flutter pub get --enforce-lockfile` puis commande officielle
    `python build.py --portable --flutter --skip-portable-pack --hwcodec --vram`.
    Le script upstream appelle Cargo `--locked` et Flutter Release. Toute modification
    de `Cargo.lock`, `flutter/pubspec.lock` ou `flutter/pubspec.yaml` échoue après build.
-6. Assemblage du dossier `rustdesk` complet : EXE, DLL Rust/moteur/affichage virtuel,
-   assets Flutter, usbmmidd (Win32 et les trois entrypoints d'installation supprimés
-   comme upstream), pilote imprimante, adapter et WindowInjection. Les archives
-   imprimante/adapter deviennent **obligatoires** plutôt que l'échec ignoré upstream.
-   Les fichiers requis/`Runner.res` absents ou ambiguës font échouer l'essai.
-7. Auto-extractible : copie de `Runner.res`, retrait local des lignes `dpiAware`
-   dans `res/manifest.xml` comme upstream, puis
-   `python generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe`
-   depuis `libs/portable`. Ce script compile le wrapper avec `cargo build --locked
-   --release` et **ne l'exécute pas**. Le seul fichier requirements upstream est
-   `brotli` sans version : cet essai choisit explicitement **brotli 1.1.0**, wheel
-   uniquement, avec Python **3.11.9** épinglé (nouveaux pins de CI, pas des versions
-   prétendument imposées upstream). Ce couple et la disponibilité du wheel n'ont
-   pas été exercés sur Windows ; le manifeste upstream reste inchangé.
-8. L'upload Windows contient le bundle, `KomiRemote-test-windows-x64-unsigned.exe`,
-   `LICENCE`, inventaire Python/outils/vcpkg, commit/gitlink/image/run, URLs et
-   SHA256 vérifiés des quatre archives, `sha256.json` de tous les autres fichiers.
-   Les noms techniques `rustdesk.exe`/`librustdesk.dll` restent inchangés à l'intérieur.
+6. Assemblage vérifié en présence, pas en exécution : EXE/DLL Rust, moteur,
+   affichage virtuel, `data/icudtl.dat`, `data/app.so`, `AssetManifest.bin`, icône
+   Flutter ; chaque fichier du vrai `flutter/build/windows/x64/install_manifest.txt`
+   doit être non vide dans le bundle, dont les plugins/CRT installés par CMake.
+   Un manifeste incomplet, sans plugin ou hors `runner/Release` échoue.
+   Les INF **consommés par le runtime** sont requis : `usbmmidd_v2/usbmmIdd.inf`
+   (casse Windows) et `drivers/RustDeskPrinterDriver/RustDeskPrinterDriver.inf`.
+   Leurs CatalogFile et SourceDisksFiles doivent référencer des fichiers présents.
+   Le validateur est volontairement conservateur, pas un moteur SetupAPI :
+   formes indirectes/localisées non reconnues, layout modifié ou dépendance après
+   retrait Win32/helpers = échec à revoir, jamais un fallback silencieux. Aucun
+   layout des quatre ZIP natifs n'a été validé sur leurs octets ici (B1 non levé).
+7. Renommage **au packaging seulement** de `rustdesk.exe` en `KomiRemote.exe` ;
+   CMake/build.py, `librustdesk.dll`, exports FFI et noms drivers inchangés.
+   Le futur wrapper upstream déduirait `komiremote` du stem (comparaison Windows
+   insensible à la casse), distinct de `%LOCALAPPDATA%\rustdesk`. Mais aucun wrapper
+   n'est construit maintenant : pas d'extraction/suppression automatique de ce
+   répertoire par le packaging. Le ZIP contient un dossier `KomiRemote/`, avec
+   `KomiRemote.exe`, le payload entier, `LICENCE` et `NOT-STANDALONE.txt`.
+   Le renommage est testé en fixture, pas par un démarrage réel Windows.
+8. `inspect_imports.ps1` trouve dumpbin x64 de VS via vswhere et conserve `/HEADERS`,
+   `/DEPENDENTS`, `/IMPORTS` pour les EXE/DLL/SYS, dont WindowInjection. Tout échec
+   du lecteur empêche l'upload. Le chemin du lecteur et le manifeste CMake sont
+   archivés. **Ce rapport n'est pas un contrôle de fermeture DLL**, ni une preuve
+   d'architecture/ABI compatible ou de chargement des DLL dynamiques.
+9. L'upload contient `KomiRemote-bundle-x64-unsigned-NOT-STANDALONE.zip`, rapports PE,
+   `LICENCE`, inventaire Python/outils/vcpkg, `nasm.json`, commit/gitlink/image/run,
+   URLs/SHA256 vérifiés des quatre archives, `sha256.json` des autres fichiers.
 
-**Le dossier runner seul n'est pas un portable autonome.** `--portable` seul ne
-suffit pas non plus : il faut la préparation du payload, ses composants natifs et
-l'appel du packer ci-dessus. Aucun MSI n'est construit (identités/EULA non revues),
-aucun code de signature upstream et aucune étape de test qui exécute le client.
+### Blocage CRT / critères avant tout portable autonome
+
+Le runner Flutter `/MT` ne rend pas statique WindowInjection, compilée séparément
+avec v142 et runtime implicite du projet épinglé. Faute de compilation et VM Windows,
+aucune solution CRT n'est déclarée sûre : ni copie arbitraire de DLL redistribuables,
+ni changement de toolset/RuntimeLibrary, ni dépendance supposée satisfaite par l'OS.
+Les rapports d'imports sont seulement préparés, **non produits ici**. Il faut ensuite
+revoir les imports normaux/différés et chargements dynamiques du résultat exact,
+choisir une stratégie CRT/licences acceptable (redistribuable externe ou app-local
+revu, ou build statique réellement testé), puis prouver chargement/privacy sur VM
+propre sans environnement VS et coexistence avec RustDesk. Le bundle n'inclut pas
+les CRT tierces par supposition ; il peut nécessiter un redistribuable externe.
+Un simple build réussi ne lève aucun de ces critères.
+
+**Aucun auto-extractible autonome, MSI, signature ni exécution du client.** Le flag
+upstream `--portable --skip-portable-pack` prépare le runner sans appeler le packer.
+`Runner.res` n'est plus copié : cette copie ne prouvait pas les ressources du wrapper.
 
 ## Reproductibilité : amélioration, pas garantie binaire
 
 - Pins upstream conservés, actions SHA, aucun cache partagé, `Cargo.lock` et
   lock Dart contrôlés, quatre digests approuvés requis et provenance enregistrée.
-- Images GitHub, paquets APT/SDK/MSVC/NASM/CMake et téléchargements transitifs
+- Images GitHub, paquets APT/SDK/MSVC/CMake et téléchargements transitifs
   vcpkg ne sont pas tous immuables. La bootstrap vcpkg et les actions requièrent le
   réseau ; l'approvisionnement de leurs outils n'est pas une chaîne hermétique.
 - La génération bridge change temporairement la résolution Dart (upstream) ; le
   lock généré n'est pas réutilisé par Windows. Un conflit réel Rust/MSRV/codegen
   ou lock Dart est un **échec à diagnostiquer**, pas une permission de mettre à jour.
-- `brotli` a un pin de version mais pas de hash de wheel indépendant ; le setup
-  Python et les distributions Flutter/LLVM héritent de leurs téléchargements.
-- Le packer crée un timestamp, le build génère des dates/ressources ; l'ordre des
-  fichiers et versions d'outils peuvent varier. Aucun bit-à-bit garanti.
+- Le packer/brotli ne sont plus utilisés. Le setup Python et les distributions
+  Flutter/LLVM héritent de leurs téléchargements. NASM possède un SHA512 épinglé,
+  ce qui vérifie l'identité des octets, pas un audit de l'outil.
+- Le build génère des dates/ressources ; l'ordre des fichiers, les timestamps du ZIP
+  et les versions d'outils peuvent varier. Aucun bit-à-bit garanti.
 - Compatibilité serveur/clé, chiffrement, consentement, absence de service runtime,
   SmartScreen, tray et install/uninstall sont **non testés**. Les composants pilotes
   et licences tierces restent à auditer avant toute distribution externe.
@@ -180,12 +230,10 @@ actionlint -shellcheck='' .github/workflows/komiremote-windows-test.yml
 git diff --check
 ```
 
-Résultat local de cette tranche : **10 tests Python réussis**, `actionlint 1.7.7`
-sans diagnostic, **9 blocs shell** vérifiés par `bash -n`, **4 snippets Python**
-embarqués compilés syntaxiquement, helpers parsés et `git diff --check` propre.
-Le contrat principal a été vu en échec avant création du workflow ; un test de nom
-ZIP Windows réservé a également échoué avant correction. Aucune commande de build
-Windows, génération bridge ou dispatch CI n'a été exécutée.
+Résultats de la correction : voir [VALIDATION.md](VALIDATION.md), section revue CI.
+Cycles RED→GREEN observés pour SHA512/NASM, payload incomplet, nom d'EXE distinct,
+INF/manifeste CMake, repli ZIP et contenu du ZIP. Aucune commande de build Windows,
+génération bridge ou dispatch CI n'a été exécutée ; PowerShell/dumpbin non exercés.
 
 Les tests lisent le YAML avec `yaml.BaseLoader` pour éviter le piège YAML 1.1 qui
 interprète `on` comme booléen. Ils vérifient événement/droits/actions/pins/artefacts,

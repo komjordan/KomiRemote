@@ -20,13 +20,14 @@ ASSETS = {
 }
 
 
-def extract_verified(archive, destination, expected):
-    """Reject digest mismatch and Windows-unsafe ZIP paths before any extraction."""
-    if not re.fullmatch(r'[a-fA-F0-9]{64}', expected):
-        raise ValueError('Expected an approved SHA256, exactly 64 hexadecimal characters')
-    actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+def extract_verified(archive, destination, expected, *, algorithm='sha256'):
+    """Verify approved asset SHA256 or pinned tool SHA512, then sanitize ZIP paths."""
+    lengths = {'sha256': 64, 'sha512': 128}
+    if algorithm not in lengths or not re.fullmatch(rf'[a-fA-F0-9]{{{lengths[algorithm]}}}', expected):
+        raise ValueError('Expected a full approved SHA256 or pinned tool SHA512')
+    actual = hashlib.new(algorithm, archive.read_bytes()).hexdigest()
     if actual != expected.lower():
-        raise ValueError(f'SHA256 mismatch for {archive.name}: {actual}')
+        raise ValueError(f'{algorithm} mismatch for {archive.name}: {actual}')
     with zipfile.ZipFile(archive) as z:
         seen = set()
         for info in z.infolist():
