@@ -2539,6 +2539,16 @@ class _AboutState extends State<_About> {
               const SizedBox(
                 height: 8.0,
               ),
+              if (isWindows && appName == 'KomiRemote') ...[
+                const SelectionArea(
+                    child: Text('Komi Remote — fork indépendant de RustDesk')),
+                InkWell(
+                    onTap: () {
+                      launchUrlString('https://github.com/komjordan/KomiRemote');
+                    },
+                    child: const Text('Code source Komi Remote (AGPL-3.0)',
+                        style: linkStyle).marginSymmetric(vertical: 4.0)),
+              ],
               SelectionArea(
                   child: Text('${translate('Version')}: $version')
                       .marginSymmetric(vertical: 4.0)),
