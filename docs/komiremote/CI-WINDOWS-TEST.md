@@ -32,6 +32,27 @@ droits sont consignés dans `/home/hermes/projects/komiremote-implementation-sta
 Aucun binaire Windows n'est présenté comme validé ; les sections ci-dessous sont
 la recette et les limites historiques, non une preuve d'exécution.
 
+## Correction ciblée MSBuild après le premier run réel
+
+Le run `39084068352` sur `0648cab65339e6d81daccc6546b39fe9630fa89a`
+a réussi validate/bridge, puis échoué dans le preflight Windows avant compilation :
+Bash ligne 14, `msbuild: command not found`, exit 127. Les logs complets montrent
+que l'action MSBuild épinglée a réussi et trouvé VS 2022 Enterprise via vswhere ;
+son code vérifie `MSBuild.exe` avant de publier `msbuildPath` et d'ajouter le
+répertoire au PATH. La rupture observée est donc la résolution par nom dans le
+Bash suivant, pas une erreur de compilation ni une preuve d'absence de VS.
+Les logs ne contiennent pas le PATH effectif : ils ne permettent pas d'attribuer
+plus précisément la cause à PowerShell, à la casse ou à l'architecture.
+
+Le preflight consomme maintenant `steps.msbuild.outputs.msbuildPath` via `env`,
+convertit le répertoire avec `cygpath -u`, vérifie le fichier, puis appelle le
+chemin absolu cité `MSBuild.exe -version`. Après réussite, ce même chemin est
+exporté via `GITHUB_ENV` et réutilisé pour WindowInjection. Aucun contrôle n'est
+supprimé ; SHA action, architecture par défaut et toolsets restent inchangés.
+Le test local reproduit l'exit 127 avec PATH sans MSBuild, puis réussit avec un
+chemin contenant des espaces. C'est une fixture Bash, pas MSBuild ni un build
+Windows. Le nouveau run et son état sont suivis dans le statut externe durable.
+
 ## État historique avant cette autorisation
 
 Le workflow `.github/workflows/komiremote-windows-test.yml` est **préparé localement,

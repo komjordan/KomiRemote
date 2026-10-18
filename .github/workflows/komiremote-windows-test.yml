@@ -154,11 +154,18 @@ jobs:
           targets: x86_64-pc-windows-msvc
           components: rustfmt
       - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+        id: msbuild
       - name: Provision checksum-pinned NASM before native builds
         run: python .github/komiremote/provision_nasm.py
       - name: Preflight tools before expensive native dependency build
+        env:
+          MSBUILD_DIR: ${{ steps.msbuild.outputs.msbuildPath }}
         run: |
           set -euo pipefail
+          # Use the action's vswhere-verified directory, not Bash's bare-name PATH lookup.
+          test -n "$MSBUILD_DIR"
+          msbuild_exe="$(cygpath -u "$MSBUILD_DIR")/MSBuild.exe"
+          test -f "$msbuild_exe"
           {
             git rev-parse HEAD
             git submodule status --recursive
@@ -171,8 +178,11 @@ jobs:
             cmake --version
             command -v nasm
             nasm -v
-            msbuild -version
+            printf 'MSBuild executable: %s\n' "$msbuild_exe"
+            "$msbuild_exe" -version
           } > komiremote-test-output/tools.txt
+          # Export only the executable whose existence and version call succeeded.
+          printf 'MSBUILD_EXE=%s\n' "$msbuild_exe" >> "$GITHUB_ENV"
           python - <<'PY'
           import json, os, shutil
           from pathlib import Path
@@ -213,7 +223,7 @@ jobs:
           set -euo pipefail
           git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow .komiremote-topmost
           git -C .komiremote-topmost checkout --detach ecd8d6a139eee76845ea66423fb739af450fda90
-          MSYS_NO_PATHCONV=1 msbuild .komiremote-topmost/WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+          MSYS_NO_PATHCONV=1 "$MSBUILD_EXE" .komiremote-topmost/WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
           test -s .komiremote-topmost/WindowInjection/x64/Release/WindowInjection.dll
       - name: Build Windows runner and assemble complete unsigned bundle
         run: |

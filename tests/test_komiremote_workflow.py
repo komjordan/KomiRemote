@@ -85,6 +85,33 @@ class ManualWorkflowTests(unittest.TestCase):
                                         capture_output=True, text=True)
                 self.assertEqual(result.returncode, returncode, result.stderr)
 
+    def test_msbuild_preflight_uses_verified_executable_without_path_lookup(self):
+        w = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+        steps = w['jobs']['windows']['steps']
+        preflight = next(s['run'] for s in steps if 'msbuild -version' in s.get('run', '')
+                         or '"$msbuild_exe" -version' in s.get('run', ''))
+        version_line = next(line.strip() for line in preflight.splitlines()
+                            if 'msbuild -version' in line or '"$msbuild_exe" -version' in line)
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
+            # Executable fixture, not MSBuild or a Windows compile.
+            executable = Path(tmp) / 'VS with spaces' / 'MSBuild.exe'
+            executable.parent.mkdir()
+            executable.write_text('#!/bin/bash\n[[ "$1" == "-version" ]]\n')
+            executable.chmod(0o700)
+            result = subprocess.run(['/bin/bash', '-euc', version_line],
+                                    env={'PATH': '/nonexistent', 'msbuild_exe': str(executable)},
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        setup = next(s for s in steps if s.get('uses', '').startswith('microsoft/setup-msbuild@'))
+        self.assertEqual(next(s for s in steps if s.get('run') == preflight)['env']['MSBUILD_DIR'],
+                         '${{ steps.' + setup['id'] + '.outputs.msbuildPath }}')
+        self.assertIn('test -f "$msbuild_exe"', preflight)
+        self.assertIn('cygpath -u "$MSBUILD_DIR"', preflight)
+        self.assertIn('MSBUILD_EXE=%s', preflight)
+        self.assertIn('"$GITHUB_ENV"', preflight)
+        build = next(s['run'] for s in steps if 'WindowInjection.vcxproj' in s.get('run', ''))
+        self.assertIn('"$MSBUILD_EXE" .komiremote-topmost/', build)
+
     def test_only_non_standalone_zip_until_windows_dependency_validation(self):
         text = WORKFLOW.read_text()
         self.assertNotIn('python generate.py', text)
