@@ -1,0 +1,246 @@
+name: Komi Remote Windows x64 unsigned test (manual)
+
+# Never call flutter-build.yml: its upload flag also publishes releases.
+"on":
+  workflow_dispatch:
+    inputs:
+      engine_sha256:
+        description: Approved SHA256 of upstream windows-x64-release.zip (main)
+        required: true
+        type: string
+      usbmmidd_sha256:
+        description: Approved SHA256 of upstream usbmmidd_v2.zip
+        required: true
+        type: string
+      printer_sha256:
+        description: Approved SHA256 of upstream rustdesk_printer_driver_v4-1.4.zip
+        required: true
+        type: string
+      adapter_sha256:
+        description: Approved SHA256 of upstream printer_driver_adapter.zip
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: komiremote-windows-test-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  VCPKG_BINARY_SOURCES: clear
+  VCPKG_COMMIT_ID: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+  VCPKG_CMAKE_VERSION: 4.3.0
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Validate approved download digests before allocating build jobs
+        env:
+          ENGINE_SHA256: ${{ inputs.engine_sha256 }}
+          USBMMIDD_SHA256: ${{ inputs.usbmmidd_sha256 }}
+          PRINTER_SHA256: ${{ inputs.printer_sha256 }}
+          ADAPTER_SHA256: ${{ inputs.adapter_sha256 }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          for key in ('ENGINE_SHA256', 'USBMMIDD_SHA256', 'PRINTER_SHA256', 'ADAPTER_SHA256'):
+              if not re.fullmatch(r'[a-fA-F0-9]{64}', os.environ[key]):
+                  raise SystemExit(f'{key}: require an independently approved 64-hex SHA256')
+          PY
+
+  bridge:
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Linux generation prerequisites (upstream bridge.yml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates clang cmake curl gcc git g++ libclang-dev libgtk-3-dev llvm-dev nasm ninja-build pkg-config wget
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: 1.75.0
+          targets: x86_64-unknown-linux-gnu
+          components: rustfmt
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: 3.22.3
+          cache: false
+      - name: Generate x64 bridge in isolated checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-expand --version 1.0.95 --locked
+          cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('flutter/pubspec.yaml')
+          text = p.read_text()
+          assert text.count('extended_text: 14.0.0') == 1
+          p.write_text(text.replace('extended_text: 14.0.0', 'extended_text: 13.0.0'))
+          PY
+          (cd flutter && flutter pub get)
+          flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
+          cp flutter/macos/Runner/bridge_generated.h flutter/ios/Runner/bridge_generated.h
+          # No modified pubspec or lockfile crosses into the Windows checkout.
+          git restore flutter/pubspec.yaml flutter/pubspec.lock
+          for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart flutter/macos/Runner/bridge_generated.h flutter/ios/Runner/bridge_generated.h; do
+            test -s "$f"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: success()
+        with:
+          name: komiremote-test-bridge
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            src/bridge_generated.rs
+            src/bridge_generated.io.rs
+            flutter/lib/generated_bridge.dart
+            flutter/lib/generated_bridge.freezed.dart
+            flutter/macos/Runner/bridge_generated.h
+            flutter/ios/Runner/bridge_generated.h
+
+  windows:
+    needs: bridge
+    runs-on: windows-2022
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      VCPKG_ROOT: C:/komi-vcpkg
+      VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
+      ENGINE_SHA256: ${{ inputs.engine_sha256 }}
+      USBMMIDD_SHA256: ${{ inputs.usbmmidd_sha256 }}
+      PRINTER_SHA256: ${{ inputs.printer_sha256 }}
+      ADAPTER_SHA256: ${{ inputs.adapter_sha256 }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: komiremote-test-bridge
+          path: .
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: 3.11.9
+      - uses: KyleMayes/install-llvm-action@ebc0426251bc40c7cd31162802432c68818ab8f0
+        with:
+          version: 15.0.6
+      - uses: subosito/flutter-action@2783a3f08e1baf891508463f8c6653c258246225
+        id: flutter
+        with:
+          channel: stable
+          flutter-version: 3.24.5
+          architecture: x64
+          cache: false
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: 1.75.0
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+      - uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce
+      - name: Fetch approved native assets (SHA256 enforced before extraction)
+        run: python .github/komiremote/fetch_assets.py
+      - name: Prepare patched x64 engine and Flutter SDK
+        env:
+          FLUTTER_SDK: ${{ steps.flutter.outputs.CACHE-PATH }}
+        run: |
+          set -euo pipefail
+          flutter doctor -v
+          flutter precache --windows
+          sdk="$(cygpath -u "$FLUTTER_SDK")"
+          cp -r .komiremote-downloads/engine/* "$sdk/bin/cache/artifacts/engine/windows-x64-release/"
+          git -C "$sdk" apply --check "$GITHUB_WORKSPACE/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          git -C "$sdk" apply "$GITHUB_WORKSPACE/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+      - name: Prepare pinned vcpkg and record actual tools
+        run: |
+          set -euo pipefail
+          mkdir -p komiremote-test-output
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --detach "$VCPKG_COMMIT_ID"
+          test "$(git -C "$VCPKG_ROOT" rev-parse HEAD)" = "$VCPKG_COMMIT_ID"
+          "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+          "$VCPKG_ROOT/vcpkg.exe" install --triplet x64-windows-static --x-install-root="$VCPKG_ROOT/installed" --disable-metrics
+          {
+            git rev-parse HEAD
+            git submodule status --recursive
+            rustc --version
+            cargo --version
+            flutter --version
+            python --version
+            python -m pip --version
+            clang --version
+            cmake --version
+            nasm -v
+            msbuild -version
+            "$VCPKG_ROOT/vcpkg.exe" version
+            "$VCPKG_ROOT/vcpkg.exe" list
+          } > komiremote-test-output/tools.txt
+      - name: Build WindowInjection from upstream pinned source
+        run: |
+          set -euo pipefail
+          git clone https://github.com/rustdesk-org/RustDeskTempTopMostWindow .komiremote-topmost
+          git -C .komiremote-topmost checkout --detach ecd8d6a139eee76845ea66423fb739af450fda90
+          MSYS_NO_PATHCONV=1 msbuild .komiremote-topmost/WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
+          test -s .komiremote-topmost/WindowInjection/x64/Release/WindowInjection.dll
+      - name: Build Windows runner and assemble complete unsigned bundle
+        run: |
+          set -euo pipefail
+          (cd flutter && flutter pub get --enforce-lockfile)
+          python build.py --portable --flutter --skip-portable-pack --hwcodec --vram
+          git diff --exit-code -- Cargo.lock flutter/pubspec.lock flutter/pubspec.yaml
+          mv flutter/build/windows/x64/runner/Release rustdesk
+          python .github/komiremote/assemble.py
+      - name: Build unsigned self-extracting portable (never execute it)
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --only-binary=:all: brotli==1.1.0
+          python - <<'PY'
+          from pathlib import Path
+          import shutil
+          assert Path('libs/portable/requirements.txt').read_text().strip() == 'brotli'
+          candidates = sorted(Path('flutter/build/windows').rglob('Runner.res'))
+          if len(candidates) != 1:
+              raise SystemExit(f'Expected exactly one Runner.res, found {len(candidates)}')
+          shutil.copy2(candidates[0], 'libs/portable/Runner.res')
+          p = Path('res/manifest.xml')
+          p.write_text(''.join(line for line in p.read_text().splitlines(keepends=True) if 'dpiAware' not in line))
+          PY
+          (cd libs/portable && python generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe)
+          test -s target/release/rustdesk-portable-packer.exe
+          cp target/release/rustdesk-portable-packer.exe komiremote-test-output/KomiRemote-test-windows-x64-unsigned.exe
+          mv rustdesk komiremote-test-output/bundle
+          cp .komiremote-downloads/verified-sha256.json komiremote-test-output/
+          cp LICENCE komiremote-test-output/
+          python -m pip freeze > komiremote-test-output/python-packages.txt
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path('komiremote-test-output')
+          provenance = {k: os.environ.get(k) for k in ('GITHUB_SHA', 'GITHUB_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'ImageOS', 'ImageVersion')}
+          (root / 'provenance.json').write_text(json.dumps(provenance, indent=2))
+          files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*')) if p.is_file()}
+          (root / 'sha256.json').write_text(json.dumps(files, indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: success()
+        with:
+          name: KomiRemote-test-windows-x64-unsigned-${{ github.sha }}
+          path: komiremote-test-output/
+          retention-days: 7
+          if-no-files-found: error

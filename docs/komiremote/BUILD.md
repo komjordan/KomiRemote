@@ -11,7 +11,12 @@ Le sous-module officiel a été initialisé au gitlink
 
 Les références exactes sont les fichiers upstream conservés :
 `.github/workflows/flutter-build.yml`, `.github/workflows/bridge.yml`, `build.py`,
-`vcpkg.json`, `res/msi/README.md`. Aucun workflow modifié ou lancé.
+`vcpkg.json`, `res/msi/README.md`. Aucun workflow upstream modifié ou lancé.
+Un essai **manuel uniquement**, sans release ni secrets, est maintenant préparé dans
+`.github/workflows/komiremote-windows-test.yml` : voir
+[CI-WINDOWS-TEST.md](CI-WINDOWS-TEST.md) pour les quatre empreintes approuvées
+obligatoires, le portable complet, les tests statiques et les risques des CI upstream.
+Il n'a pas été exécuté : aucun résultat Windows ne peut en être déduit.
 Les commandes suivantes sont une recette de préparation **non exécutée ici**,
 à utiliser dans une copie jetable sur un runner Windows explicitement autorisé.
 
@@ -70,7 +75,8 @@ Le chemin upstream remplace le moteur release Flutter x64 avec
 et applique au SDK `.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff`.
 Ces étapes doivent être reproduites ou leur omission explicitement évaluée.
 Le tag moteur `main` est mutable : capturer une empreinte approuvée avant de
-parler de reproductibilité. Ne pas publier de workflow automatisant cette recette.
+parler de reproductibilité. Le workflow manuel dédié exige désormais une empreinte
+approuvée avant téléchargement/extraction ; aucun lancement n'est autorisé ici.
 
 ```powershell
 python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
