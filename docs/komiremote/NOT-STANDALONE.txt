@@ -1,0 +1,20 @@
+Komi Remote - EXPERIMENTAL UNSIGNED BUNDLE - NOT STANDALONE
+
+This ZIP is not a validated portable application or installer. Extract the whole
+KomiRemote folder only in an authorized disposable Windows VM/profile. Do not run
+it on production machines. KomiRemote.exe is the renamed Flutter runner;
+librustdesk.dll and its FFI names are intentionally unchanged.
+
+No self-extracting wrapper is built: nothing in packaging extracts or deletes
+%LOCALAPPDATA%\rustdesk. Runtime coexistence with RustDesk remains untested.
+
+WindowInjection is built with the original pinned v142 project. Its CRT and other
+DLL requirements have NOT been made self-contained. PE reports are evidence for
+review, not proof that dependencies resolve on a clean Windows VM. No arbitrary
+CRT DLL copies, toolset retargeting or untested /MT override have been applied.
+A compatible Microsoft VC++ runtime may be needed; exact imports, redistribution
+rights and clean-VM loading/privacy behavior must be reviewed before distribution.
+
+Build success and file-presence tests do not prove signature validity, driver
+compatibility, consent, service behavior, encryption or remote-session security.
+See docs/komiremote/CI-WINDOWS-TEST.md in the corresponding source commit.
