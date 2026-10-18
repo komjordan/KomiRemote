@@ -1,0 +1,77 @@
+[
+  {
+    "target": "res/32x32.png",
+    "source": "rustdesk/32x32.png",
+    "sha256": "f89e778e6a584fb33dd34dda7cc6da5418073df69e96f767a6e65ebe6db7cd43"
+  },
+  {
+    "target": "res/64x64.png",
+    "source": "rustdesk/64x64.png",
+    "sha256": "7cd1cd936c0c974b64e9b4418b661cf247f5deb21faf62f31a811c6393959b11"
+  },
+  {
+    "target": "res/128x128.png",
+    "source": "rustdesk/128x128.png",
+    "sha256": "de4040d4b831d37601fe961466adb2b9b5d4125fd7986997197984bd2485c839"
+  },
+  {
+    "target": "res/128x128@2x.png",
+    "source": "rustdesk/128x128@2x.png",
+    "sha256": "475b0d405acbaebf2227b9942fc3c450abe8319dd143f8d43ff76c30a2df1e56"
+  },
+  {
+    "target": "res/icon.png",
+    "source": "rustdesk/icon.png",
+    "sha256": "97a8913b68636584e0f60a60b730055b88a0d331b978942b5f50afef5e1e3663"
+  },
+  {
+    "target": "res/icon.ico",
+    "source": "rustdesk/icon.ico",
+    "sha256": "5a82e85db7f32e9d965e4337a132723d49d873e4226fbc335f6934d01f8f63a2"
+  },
+  {
+    "target": "res/tray-icon.ico",
+    "source": "rustdesk/tray-icon.ico",
+    "sha256": "5a82e85db7f32e9d965e4337a132723d49d873e4226fbc335f6934d01f8f63a2"
+  },
+  {
+    "target": "res/scalable.svg",
+    "source": "rustdesk/scalable.svg",
+    "sha256": "08fa0a12d536673ef86f2337418fa12a5d0762a1bc7901f0d3b4397817fbc399"
+  },
+  {
+    "target": "flutter/windows/runner/resources/app_icon.ico",
+    "source": "ico/komiremote.ico",
+    "sha256": "5a82e85db7f32e9d965e4337a132723d49d873e4226fbc335f6934d01f8f63a2"
+  },
+  {
+    "target": "flutter/assets/icon.png",
+    "source": "png/komiremote-icon-32.png",
+    "sha256": "f89e778e6a584fb33dd34dda7cc6da5418073df69e96f767a6e65ebe6db7cd43"
+  },
+  {
+    "target": "flutter/assets/icon.ico",
+    "source": "ico/komiremote.ico",
+    "sha256": "5a82e85db7f32e9d965e4337a132723d49d873e4226fbc335f6934d01f8f63a2"
+  },
+  {
+    "target": "flutter/assets/icon.svg",
+    "source": "svg/komiremote-icon-small.svg",
+    "sha256": "ec3d718489bb5b9f36a2a2e1bf2588f71f98e45b44e2dda8eba77b641bcdefe4"
+  },
+  {
+    "target": "flutter/assets/logo_dark.png",
+    "source": "png/komiremote-lockup-dark-bg-1600.png",
+    "sha256": "d60263c4efd17fdde61728f990acb288ea94414738681dee39dd5ccbdbb64204"
+  },
+  {
+    "target": "flutter/assets/logo_light.png",
+    "source": "png/komiremote-lockup-light-bg-1600.png",
+    "sha256": "7b4e9c884019ca5d4a6c4ecdcfd5afc20d37a8bccd771dcd3ddd7dc7aec85ac4"
+  },
+  {
+    "target": "flutter/assets/logo.png",
+    "source": "png/komiremote-lockup-dark-bg-1600.png",
+    "sha256": "d60263c4efd17fdde61728f990acb288ea94414738681dee39dd5ccbdbb64204"
+  }
+]
