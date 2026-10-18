@@ -1,0 +1,66 @@
+{
+  "authorization": "Explicit user authorization: download the four official RustDesk assets, including engine/USB without publisher digest, calculate and freeze a provenance baseline; not an independent security audit. No downloaded executable/installer/driver is executed. Manual test build only, no release/distribution.",
+  "verification_limit": "SHA256 identifies downloaded bytes. Publisher digests exist for two assets only. Tags/assets remain mutable. No signature, malware, ABI or runtime validation.",
+  "assets": [
+    {
+      "name": "engine",
+      "repository": "rustdesk/engine",
+      "asset_id": 210168939,
+      "asset_api_url": "https://api.github.com/repos/rustdesk/engine/releases/assets/210168939",
+      "url": "https://github.com/rustdesk/engine/releases/download/main/windows-x64-release.zip",
+      "filename": "windows-x64-release.zip",
+      "bytes": 63301215,
+      "sha256": "ec8cabf36ee4ff24c8d98de25b00e70781eb03876265aee84d0fe554a110036e",
+      "publisher_digest": null,
+      "publisher_digest_matches": null,
+      "downloaded_at_utc": "2026-10-18T00:40:41.963104+00:00",
+      "asset_created_at": "2024-12-01T03:40:07Z",
+      "asset_updated_at": "2024-12-01T03:40:10Z"
+    },
+    {
+      "name": "usbmmidd",
+      "repository": "rustdesk-org/rdev",
+      "asset_id": 180784412,
+      "asset_api_url": "https://api.github.com/repos/rustdesk-org/rdev/releases/assets/180784412",
+      "url": "https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip",
+      "filename": "usbmmidd_v2.zip",
+      "bytes": 199309,
+      "sha256": "629b51e9944762bae73948171c65d09a79595cf4c771a82ebc003fbba5b24f51",
+      "publisher_digest": null,
+      "publisher_digest_matches": null,
+      "downloaded_at_utc": "2026-10-18T00:40:34.575086+00:00",
+      "asset_created_at": "2024-07-20T15:48:33Z",
+      "asset_updated_at": "2024-07-20T15:48:37Z"
+    },
+    {
+      "name": "printer",
+      "repository": "rustdesk/hbb_common",
+      "asset_id": 276730335,
+      "asset_api_url": "https://api.github.com/repos/rustdesk/hbb_common/releases/assets/276730335",
+      "url": "https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip",
+      "filename": "rustdesk_printer_driver_v4-1.4.zip",
+      "bytes": 34789,
+      "sha256": "c4cf4d3b48c4d9079b243edc43bb1db03b076282bc259c9f49883e9db20fa8b5",
+      "publisher_digest": "sha256:c4cf4d3b48c4d9079b243edc43bb1db03b076282bc259c9f49883e9db20fa8b5",
+      "publisher_digest_matches": true,
+      "downloaded_at_utc": "2026-10-18T00:40:34.507213+00:00",
+      "asset_created_at": "2025-07-27T03:51:08Z",
+      "asset_updated_at": "2025-07-27T03:51:12Z"
+    },
+    {
+      "name": "adapter",
+      "repository": "rustdesk/hbb_common",
+      "asset_id": 328545268,
+      "asset_api_url": "https://api.github.com/repos/rustdesk/hbb_common/releases/assets/328545268",
+      "url": "https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip",
+      "filename": "printer_driver_adapter.zip",
+      "bytes": 534603,
+      "sha256": "e90e5d52c8807b4c6293c78a52479338715e0bf396b1b34802777b8c452e6781",
+      "publisher_digest": "sha256:e90e5d52c8807b4c6293c78a52479338715e0bf396b1b34802777b8c452e6781",
+      "publisher_digest_matches": true,
+      "downloaded_at_utc": "2026-10-18T00:40:34.668245+00:00",
+      "asset_created_at": "2025-12-14T14:24:43Z",
+      "asset_updated_at": "2025-12-14T14:24:54Z"
+    }
+  ]
+}
