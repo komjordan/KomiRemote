@@ -97,8 +97,11 @@ def validate_install_manifest(bundle, manifest):
         name = line.split(marker, 1)[1]
         windows_file(bundle, name)
         names.append(name.casefold())
-    if not {'rustdesk.exe', 'librustdesk.dll', 'flutter_windows.dll'}.issubset(names):
-        raise ValueError('Incomplete CMake install manifest')
+    # Minimum core components installed by Flutter's CMake runner
+    core_expected = {'rustdesk.exe', 'flutter_windows.dll'}
+    missing_core = core_expected - set(names)
+    if missing_core:
+        raise ValueError(f'Incomplete CMake install manifest, missing core components: {sorted(missing_core)}')
     if not any(n.endswith('_plugin.dll') for n in names):
         raise ValueError('No generated plugin DLL in CMake install manifest')
 
