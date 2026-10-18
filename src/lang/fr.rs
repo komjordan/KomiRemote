@@ -1,6 +1,16 @@
 lazy_static::lazy_static! {
 pub static ref T: std::collections::HashMap<&'static str, &'static str> =
     [
+        ("komi_status_connected", "Connecté"),
+        ("komi_status_connecting", "Connexion en cours"),
+        ("komi_status_unreachable", "Serveur inaccessible"),
+        ("komi_desk_tip_click", "Votre bureau est accessible à distance grâce à l’identifiant ci-dessous. Chaque demande de connexion nécessite votre autorisation."),
+        ("komi_desk_tip_password", "Votre bureau est accessible à distance grâce à l’identifiant et au mot de passe ci-dessous."),
+        ("komi_desk_tip_both", "Votre bureau est accessible à distance grâce à l’identifiant ci-dessous, avec le mot de passe ou votre autorisation."),
+        ("komi_approve_click", "Confirmation manuelle"),
+        ("komi_approve_password", "Mot de passe"),
+        ("komi_approve_both", "Mot de passe ou confirmation manuelle"),
+        ("komi_matrix_animation", "Animation Matrix"),
         ("Status", "État"),
         ("Your Desktop", "Votre bureau"),
         ("desk_tip", "Votre bureau est accessible via l’identifiant et le mot de passe ci-dessous."),

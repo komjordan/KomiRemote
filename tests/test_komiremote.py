@@ -57,11 +57,23 @@ class BrandPresentation(unittest.TestCase):
 
     def test_about_identifies_fork_and_corresponding_source(self):
         about = (ROOT / 'flutter/lib/desktop/pages/desktop_setting_page.dart').read_text().split('class _AboutState', 1)[1]
-        self.assertIn("isWindows && appName == 'KomiRemote'", about)
-        self.assertIn('Komi Remote — fork indépendant de RustDesk', about)
-        self.assertIn('https://github.com/komjordan/KomiRemote', about)
+        self.assertIn('if (isKomiRemote) ..._komiAboutInfo(linkStyle)', about)
+        for required in ('Nom : KomiRemote', 'Éditeur : Komjordan', 'https://komjordan.fr',
+                         'Fork indépendant de RustDesk OSS', 'Licence : GNU AGPL-3.0',
+                         'https://github.com/komjordan/KomiRemote',
+                         'https://github.com/rustdesk/rustdesk',
+                         'Version modifiée de RustDesk', 'SANS AUCUNE GARANTIE'):
+            self.assertIn(required, about)
+        # Upstream copyright and licence text must stay visible (AGPL-3.0 section 5).
         self.assertIn('Purslane Tech Pte. Ltd.', about)
         self.assertIn('$license', about)
+
+    def test_manual_approval_is_engine_default(self):
+        cfg = (ROOT / 'src/komi_config.rs').read_text()
+        self.assertIn('("approve-mode", "click")', cfg)
+        conn = (ROOT / 'src/server/connection.rs').read_text()
+        # Click mode never validates a password: it always waits for the connection manager.
+        self.assertIn('password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password', conn)
 
 
 class OriginalBrandAssets(unittest.TestCase):

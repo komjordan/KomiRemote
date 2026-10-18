@@ -20,6 +20,8 @@ import '../../common/widgets/peer_tab_page.dart';
 import '../../common/widgets/autocomplete.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
+import 'package:flutter_hbb/desktop/widgets/komi_matrix_rain.dart'
+    show isKomiRemote;
 
 class OnlineStatusWidget extends StatefulWidget {
   const OnlineStatusWidget({Key? key, this.onSvcStatusChanged})
@@ -159,10 +161,14 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
       _svcStopped.value
           ? translate("Service is not running")
           : stateGlobal.svcStatus.value == SvcStatus.connecting
-              ? translate("connecting_status")
+              ? translate(
+                  isKomiRemote ? "komi_status_connecting" : "connecting_status")
               : stateGlobal.svcStatus.value == SvcStatus.notReady
-                  ? translate("not_ready_status")
-                  : translate('Ready'),
+                  ? translate(isKomiRemote
+                      ? "komi_status_unreachable"
+                      : "not_ready_status")
+                  // ready == RegisterPeerResponse received from the rendezvous server
+                  : translate(isKomiRemote ? "komi_status_connected" : 'Ready'),
       style: TextStyle(fontSize: em),
     );
   }

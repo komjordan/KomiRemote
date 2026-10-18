@@ -24,6 +24,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:window_size/window_size.dart' as window_size;
 import '../widgets/button.dart';
+import '../widgets/komi_matrix_rain.dart';
 
 class DesktopHomePage extends StatefulWidget {
   const DesktopHomePage({Key? key}) : super(key: key);
@@ -59,15 +60,31 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget build(BuildContext context) {
     super.build(context);
     final isIncomingOnly = bind.isIncomingOnly();
+    Widget content(bool matrix) => Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildLeftPane(context, matrix: matrix),
+            if (!isIncomingOnly) const VerticalDivider(width: 1),
+            if (!isIncomingOnly)
+              Expanded(child: buildRightPane(context, matrix: matrix)),
+          ],
+        );
+    if (!isKomiRemote) {
+      return _buildBlock(child: content(false));
+    }
+    loadKomiMatrixOption();
     return _buildBlock(
-        child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildLeftPane(context),
-        if (!isIncomingOnly) const VerticalDivider(width: 1),
-        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
-      ],
-    ));
+        child: Obx(() => komiMatrixEnabled.value
+            ? Stack(children: [
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: const Color(0xFF07090B),
+                    child: MatrixRain(isActive: () => isInHomePage()),
+                  ),
+                ),
+                content(true),
+              ])
+            : content(false)));
   }
 
   Widget _buildBlock({required Widget child}) {
@@ -75,12 +92,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         block: _block, mask: true, use: canBeBlocked, child: child);
   }
 
-  Widget buildLeftPane(BuildContext context) {
+  Widget buildLeftPane(BuildContext context, {bool matrix = false}) {
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
     final children = <Widget>[
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
-      if (bind.isCustomClient())
+      // KomiRemote: no "powered by" line on the home screen; legal notices stay in About.
+      if (bind.isCustomClient() && !isKomiRemote)
         Align(
           alignment: Alignment.center,
           child: loadPowered(context),
@@ -130,7 +148,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       value: gFFI.serverModel,
       child: Container(
         width: isIncomingOnly ? 280.0 : 200.0,
-        color: Theme.of(context).colorScheme.background,
+        color: matrix
+            ? Theme.of(context).colorScheme.background.withOpacity(0.86)
+            : Theme.of(context).colorScheme.background,
         child: Stack(
           children: [
             Column(
@@ -178,9 +198,11 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     );
   }
 
-  buildRightPane(BuildContext context) {
+  buildRightPane(BuildContext context, {bool matrix = false}) {
     return Container(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: matrix
+          ? Theme.of(context).scaffoldBackgroundColor.withOpacity(0.80)
+          : Theme.of(context).scaffoldBackgroundColor,
       child: ConnectionPage(),
     );
   }
@@ -410,11 +432,24 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           SizedBox(
             height: 10.0,
           ),
-          if (!isOutgoingOnly)
+          if (!isOutgoingOnly && !isKomiRemote)
             Text(
               translate("desk_tip"),
               overflow: TextOverflow.clip,
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          // KomiRemote: the tip follows the approve mode actually enforced by the engine.
+          if (!isOutgoingOnly && isKomiRemote)
+            Consumer<ServerModel>(
+              builder: (context, model, child) => Text(
+                translate(model.approveMode == 'click'
+                    ? 'komi_desk_tip_click'
+                    : model.approveMode == 'password'
+                        ? 'komi_desk_tip_password'
+                        : 'komi_desk_tip_both'),
+                overflow: TextOverflow.clip,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           if (isOutgoingOnly)
             Text(

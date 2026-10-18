@@ -82,6 +82,8 @@ fn initializes_public_defaults_without_writing_user_configuration() {
     );
     assert_eq!(local.read().unwrap().get("lang").unwrap(), "fr");
     assert_eq!(local.read().unwrap().get("theme").unwrap(), "dark");
-    assert_eq!(server.read().unwrap().len(), 3);
+    // Manual approval is the engine default (ApproveMode::Click); users may change it.
+    assert_eq!(server.read().unwrap().get("approve-mode").unwrap(), "click");
+    assert_eq!(server.read().unwrap().len(), 4);
     assert_eq!(local.read().unwrap().len(), 2);
 }

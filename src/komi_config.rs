@@ -15,6 +15,9 @@ pub(crate) fn initialize(
             ("custom-rendezvous-server", "217.154.20.200"),
             ("relay-server", "217.154.20.200:21117"),
             ("key", "52TLfnxb60d5V0VSRwZpUDcDlphr7+qFQqgFumhKpr4="),
+            // Engine-enforced manual confirmation by default (connection.rs ApproveMode::Click):
+            // passwords are never accepted in this mode. Users can still change it in Settings.
+            ("approve-mode", "click"),
         ] {
             server
                 .entry(key.to_owned())

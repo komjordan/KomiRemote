@@ -24,6 +24,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/login.dart';
+import 'package:flutter_hbb/desktop/widgets/komi_matrix_rain.dart';
 
 const double _kTabWidth = 200;
 const double _kTabHeight = 42;
@@ -72,7 +73,8 @@ class DesktopSettingPage extends StatefulWidget {
         bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) != 'Y')
       SettingsTabKey.network,
     if (!bind.isIncomingOnly()) SettingsTabKey.display,
-    if (!bind.isDisableAccount()) SettingsTabKey.account,
+    // KomiRemote: Account tab hidden from navigation; its widgets stay in the code base.
+    if (!bind.isDisableAccount() && !isKomiRemote) SettingsTabKey.account,
     if (isWindows &&
         !bind.isDisableSettings() &&
         bind.mainGetBuildinOption(key: kOptionHideRemotePrinterSetting) != 'Y')
@@ -1340,16 +1342,22 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 : null,
           ).marginOnly(left: _kContentHSubMargin - 5);
 
-          final modeKeys = <String>[
-            'password',
-            'click',
-            defaultOptionApproveMode
-          ];
-          final modeValues = [
-            translate('Accept sessions via password'),
-            translate('Accept sessions via click'),
-            translate('Accept sessions via both'),
-          ];
+          // KomiRemote: same three native engine modes (ApproveMode), honest labels,
+          // manual approval listed first because it is the default.
+          final modeKeys = isKomiRemote
+              ? <String>['click', 'password', defaultOptionApproveMode]
+              : <String>['password', 'click', defaultOptionApproveMode];
+          final modeValues = isKomiRemote
+              ? [
+                  translate('komi_approve_click'),
+                  translate('komi_approve_password'),
+                  translate('komi_approve_both'),
+                ]
+              : [
+                  translate('Accept sessions via password'),
+                  translate('Accept sessions via click'),
+                  translate('Accept sessions via both'),
+                ];
           var modeInitialKey = model.approveMode;
           if (!modeKeys.contains(modeInitialKey)) {
             modeInitialKey = defaultOptionApproveMode;
@@ -1946,6 +1954,7 @@ class _DisplayState extends State<_Display> {
   Widget build(BuildContext context) {
     final scrollController = ScrollController();
     return ListView(controller: scrollController, children: [
+      if (isKomiRemote) komiAppearance(context),
       viewStyle(context),
       scrollStyle(context),
       imageQuality(context),
@@ -1954,6 +1963,16 @@ class _DisplayState extends State<_Display> {
       if (!isWeb) privacyModeImpl(context),
       other(context),
     ]).marginOnly(bottom: _kListViewBottomMargin);
+  }
+
+  Widget komiAppearance(BuildContext context) {
+    return _Card(title: 'KomiRemote', children: [
+      _OptionCheckBox(context, 'komi_matrix_animation', kOptionKomiMatrixAnimation,
+          isServer: false,
+          optGetter: () =>
+              mainGetLocalBoolOptionSync(kOptionKomiMatrixAnimation),
+          optSetter: (key, value) => setKomiMatrixEnabled(value)),
+    ]);
   }
 
   Widget viewStyle(BuildContext context) {
@@ -2532,23 +2551,16 @@ class _AboutState extends State<_About> {
       final scrollController = ScrollController();
       return SingleChildScrollView(
         controller: scrollController,
-        child: _Card(title: translate('About RustDesk'), children: [
+        child: _Card(
+            title: isKomiRemote ? 'À propos de KomiRemote' : translate('About RustDesk'),
+            children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(
                 height: 8.0,
               ),
-              if (isWindows && appName == 'KomiRemote') ...[
-                const SelectionArea(
-                    child: Text('Komi Remote — fork indépendant de RustDesk')),
-                InkWell(
-                    onTap: () {
-                      launchUrlString('https://github.com/komjordan/KomiRemote');
-                    },
-                    child: const Text('Code source Komi Remote (AGPL-3.0)',
-                        style: linkStyle).marginSymmetric(vertical: 4.0)),
-              ],
+              if (isKomiRemote) ..._komiAboutInfo(linkStyle),
               SelectionArea(
                   child: Text('${translate('Version')}: $version')
                       .marginSymmetric(vertical: 4.0)),
@@ -2562,22 +2574,24 @@ class _AboutState extends State<_About> {
               SelectionArea(
                   child: Text('${translate('ID')}: $myId')
                       .marginSymmetric(vertical: 4.0)),
-              InkWell(
-                  onTap: () {
-                    launchUrlString('https://rustdesk.com/privacy.html');
-                  },
-                  child: Text(
-                    translate('Privacy Statement'),
-                    style: linkStyle,
-                  ).marginSymmetric(vertical: 4.0)),
-              InkWell(
-                  onTap: () {
-                    launchUrlString('https://rustdesk.com');
-                  },
-                  child: Text(
-                    translate('Website'),
-                    style: linkStyle,
-                  ).marginSymmetric(vertical: 4.0)),
+              if (!isKomiRemote)
+                InkWell(
+                    onTap: () {
+                      launchUrlString('https://rustdesk.com/privacy.html');
+                    },
+                    child: Text(
+                      translate('Privacy Statement'),
+                      style: linkStyle,
+                    ).marginSymmetric(vertical: 4.0)),
+              if (!isKomiRemote)
+                InkWell(
+                    onTap: () {
+                      launchUrlString('https://rustdesk.com');
+                    },
+                    child: Text(
+                      translate('Website'),
+                      style: linkStyle,
+                    ).marginSymmetric(vertical: 4.0)),
               Container(
                 decoration: const BoxDecoration(color: Color(0xFF2c8cff)),
                 padding:
@@ -2611,6 +2625,33 @@ class _AboutState extends State<_About> {
       );
     });
   }
+}
+
+// KomiRemote About block. Copyright, licence text and the no-warranty notice
+// below are kept on purpose (AGPL-3.0 sections 5 and 15/16).
+List<Widget> _komiAboutInfo(TextStyle linkStyle) {
+  Widget line(String text) => SelectionArea(
+      child: Text(text).marginSymmetric(vertical: 2.0));
+  Widget link(String label, String url) => InkWell(
+      onTap: () => launchUrlString(url),
+      child: Text('$label : $url', style: linkStyle)
+          .marginSymmetric(vertical: 2.0));
+  return [
+    line('Nom : KomiRemote'),
+    line('Description : Bureau à distance, simplement.'),
+    line('Éditeur : Komjordan'),
+    link('Site web', 'https://komjordan.fr'),
+    line('Projet : Fork indépendant de RustDesk OSS'),
+    line('Licence : GNU AGPL-3.0'),
+    link('Code source', 'https://github.com/komjordan/KomiRemote'),
+    link("Projet d'origine", 'https://github.com/rustdesk/rustdesk'),
+    line('Version modifiée de RustDesk par Komjordan (2026) : identité visuelle, '
+        'textes, valeurs par défaut et options d\'affichage.'),
+    line('Ce programme est distribué SANS AUCUNE GARANTIE, sans même la garantie '
+        'implicite de QUALITÉ MARCHANDE ou d\'ADÉQUATION À UN USAGE PARTICULIER. '
+        'Voir la licence GNU AGPL-3.0 pour plus de détails.'),
+    const SizedBox(height: 6),
+  ];
 }
 
 //#endregion

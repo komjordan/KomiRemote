@@ -1,6 +1,16 @@
 lazy_static::lazy_static! {
 pub static ref T: std::collections::HashMap<&'static str, &'static str> =
     [
+        ("komi_status_connected", "Connected"),
+        ("komi_status_connecting", "Connecting"),
+        ("komi_status_unreachable", "Server unreachable"),
+        ("komi_desk_tip_click", "Your desktop can be accessed remotely with the ID below. Every connection request requires your approval."),
+        ("komi_desk_tip_password", "Your desktop can be accessed remotely with the ID and password below."),
+        ("komi_desk_tip_both", "Your desktop can be accessed remotely with the ID below, using the password or your approval."),
+        ("komi_approve_click", "Manual approval"),
+        ("komi_approve_password", "Password"),
+        ("komi_approve_both", "Password or manual approval"),
+        ("komi_matrix_animation", "Matrix animation"),
         ("desk_tip", "Your desktop can be accessed with this ID and password."),
         ("connecting_status", "Connecting to the RustDesk network..."),
         ("not_ready_status", "Not ready. Please check your connection"),
