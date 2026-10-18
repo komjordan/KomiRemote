@@ -196,14 +196,13 @@ confiance à auditer. Aucun client ou installateur du payload n'est exécuté.
    formes indirectes/localisées non reconnues, layout modifié ou dépendance après
    retrait Win32/helpers = échec à revoir, jamais un fallback silencieux. Aucun
    layout des quatre ZIP natifs n'a été validé sur leurs octets ici (B1 non levé).
-7. Renommage **au packaging seulement** de `rustdesk.exe` en `KomiRemote.exe` ;
-   CMake/build.py, `librustdesk.dll`, exports FFI et noms drivers inchangés.
-   Le futur wrapper upstream déduirait `komiremote` du stem (comparaison Windows
-   insensible à la casse), distinct de `%LOCALAPPDATA%\rustdesk`. Mais aucun wrapper
-   n'est construit maintenant : pas d'extraction/suppression automatique de ce
-   répertoire par le packaging. Le ZIP contient un dossier `KomiRemote/`, avec
-   `KomiRemote.exe`, le payload entier, `LICENCE` et `NOT-STANDALONE.txt`.
-   Le renommage est testé en fixture, pas par un démarrage réel Windows.
+7. **Aucun renommage** (révision Phase 2) : `assemble.py` n'est plus appelé par le
+   workflow. Après `build.py`, le dossier `Release` devient `rustdesk/` comme dans
+   `flutter-build.yml` upstream, puis reçoit le même payload (usbmmidd_v2 sans
+   Win32/installeurs, `drivers/RustDeskPrinterDriver`, `printer_driver_adapter.dll`,
+   `WindowInjection.dll`) depuis les téléchargements vérifiés SHA256. `rustdesk.exe`,
+   `librustdesk.dll` et `%APPDATA%\RustDesk` restent ceux d'upstream. Le ZIP contient
+   `rustdesk/` avec le payload, `LICENCE` et `NOT-STANDALONE.txt`.
 8. `inspect_imports.ps1` trouve dumpbin x64 de VS via vswhere et conserve `/HEADERS`,
    `/DEPENDENTS`, `/IMPORTS` pour les EXE/DLL/SYS, dont WindowInjection. Tout échec
    du lecteur empêche l'upload. Le chemin du lecteur et le manifeste CMake sont

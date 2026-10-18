@@ -48,7 +48,7 @@ class ManualWorkflowTests(unittest.TestCase):
             self.assertIn(required, all_runs)
 
     def test_referenced_build_helpers_exist(self):
-        for name in ('fetch_assets.py', 'assemble.py', 'provision_nasm.py', 'inspect_imports.ps1'):
+        for name in ('fetch_assets.py', 'provision_nasm.py', 'inspect_imports.ps1'):
             self.assertTrue((ROOT / '.github/komiremote' / name).is_file(), name)
         self.assertTrue((ROOT / 'docs/komiremote/NOT-STANDALONE.txt').is_file())
         inspection = (ROOT / '.github/komiremote/inspect_imports.ps1').read_text()
@@ -122,7 +122,7 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertIn('NOT-STANDALONE.txt', text)
         self.assertIn('inspect_imports.ps1', text)
 
-    def test_zip_step_packages_only_distinct_komiremote_namespace(self):
+    def test_zip_step_keeps_upstream_binary_names(self):
         w = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
         run = next(s['run'] for s in w['jobs']['windows']['steps']
                    if 'shutil.make_archive' in s.get('run', ''))
@@ -131,17 +131,30 @@ class ManualWorkflowTests(unittest.TestCase):
         snippet = match.group(1)
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
             root = Path(tmp)
-            (root / 'KomiRemote').mkdir()
+            (root / 'rustdesk').mkdir()
             (root / 'komiremote-test-output').mkdir()
-            for name in ('KomiRemote.exe', 'librustdesk.dll', 'NOT-STANDALONE.txt'):
-                (root / 'KomiRemote' / name).write_bytes(b'fixture, never executed')
+            for name in ('rustdesk.exe', 'librustdesk.dll', 'NOT-STANDALONE.txt'):
+                (root / 'rustdesk' / name).write_bytes(b'fixture, never executed')
             result = subprocess.run([sys.executable, '-c', snippet], cwd=root, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             archive, = (root / 'komiremote-test-output').glob('*.zip')
             with zipfile.ZipFile(archive) as z:
-                self.assertTrue(all(n.startswith('KomiRemote/') for n in z.namelist()))
-                self.assertIn('KomiRemote/KomiRemote.exe', z.namelist())
-                self.assertIn('KomiRemote/librustdesk.dll', z.namelist())
+                self.assertTrue(all(n.startswith('rustdesk/') for n in z.namelist()))
+                self.assertIn('rustdesk/rustdesk.exe', z.namelist())
+                self.assertIn('rustdesk/librustdesk.dll', z.namelist())
+
+    def test_native_build_path_without_custom_assembler_or_rename(self):
+        text = WORKFLOW.read_text()
+        self.assertNotIn('assemble.py', text)
+        self.assertNotIn('KomiRemote.exe', text)
+        self.assertNotIn('mv rustdesk ', text)
+        w = yaml.load(text, Loader=yaml.BaseLoader)
+        build = next(s['run'] for s in w['jobs']['windows']['steps']
+                     if 'build.py' in s.get('run', ''))
+        self.assertIn('mv flutter/build/windows/x64/runner/Release rustdesk', build)
+        for payload in ('usbmmidd_v2', 'drivers/RustDeskPrinterDriver', 'printer_driver_adapter.dll',
+                        'WindowInjection.dll', 'librustdesk.dll', 'dylib_virtual_display.dll'):
+            self.assertIn(payload, build)
 
     def test_manual_readonly_artifacts_only(self):
         self.assertTrue(WORKFLOW.exists(), 'dedicated manual workflow missing')

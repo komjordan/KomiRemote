@@ -225,26 +225,40 @@ jobs:
           git -C .komiremote-topmost checkout --detach ecd8d6a139eee76845ea66423fb739af450fda90
           MSYS_NO_PATHCONV=1 "$MSBUILD_EXE" .komiremote-topmost/WindowInjection/WindowInjection.vcxproj -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
           test -s .komiremote-topmost/WindowInjection/x64/Release/WindowInjection.dll
-      - name: Build Windows runner and assemble complete unsigned bundle
+      - name: Build with official build.py and add upstream runtime payload (no rename)
         run: |
           set -euo pipefail
           (cd flutter && flutter pub get --enforce-lockfile)
           python build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           git diff --exit-code -- Cargo.lock flutter/pubspec.lock flutter/pubspec.yaml
           mv flutter/build/windows/x64/runner/Release rustdesk
-          python .github/komiremote/assemble.py
+          # Same payload and layout as upstream flutter-build.yml, taken from the
+          # SHA256-verified downloads instead of unverified re-downloads.
+          d=.komiremote-downloads
+          cp -r "$d/usbmmidd/usbmmidd_v2" rustdesk/usbmmidd_v2
+          rm -r rustdesk/usbmmidd_v2/Win32
+          rm rustdesk/usbmmidd_v2/deviceinstaller64.exe rustdesk/usbmmidd_v2/deviceinstaller.exe rustdesk/usbmmidd_v2/usbmmidd.bat
+          mkdir -p rustdesk/drivers
+          cp -r "$d/printer/rustdesk_printer_driver_v4-1.4" rustdesk/drivers/RustDeskPrinterDriver
+          cp "$d/adapter/printer_driver_adapter.dll" rustdesk/
+          cp .komiremote-topmost/WindowInjection/x64/Release/WindowInjection.dll rustdesk/
+          for f in rustdesk.exe librustdesk.dll flutter_windows.dll dylib_virtual_display.dll \
+                   WindowInjection.dll printer_driver_adapter.dll data/app.so data/icudtl.dat \
+                   usbmmidd_v2/usbmmIdd.inf drivers/RustDeskPrinterDriver/RustDeskPrinterDriver.inf; do
+            test -s "rustdesk/$f" || { echo "missing in bundle: $f" >&2; exit 1; }
+          done
+          ls -la rustdesk
       - name: Record PE imports without executing payload (not dependency closure proof)
         shell: pwsh
         run: ./.github/komiremote/inspect_imports.ps1
       - name: Archive unsigned non-standalone bundle only (no portable wrapper)
         run: |
           set -euo pipefail
-          mv rustdesk KomiRemote
-          cp docs/komiremote/NOT-STANDALONE.txt KomiRemote/
-          cp LICENCE KomiRemote/
+          cp docs/komiremote/NOT-STANDALONE.txt rustdesk/
+          cp LICENCE rustdesk/
           python - <<'PY'
           import shutil
-          shutil.make_archive('komiremote-test-output/KomiRemote-bundle-x64-unsigned-NOT-STANDALONE', 'zip', root_dir='.', base_dir='KomiRemote')
+          shutil.make_archive('komiremote-test-output/KomiRemote-bundle-x64-unsigned-NOT-STANDALONE', 'zip', root_dir='.', base_dir='rustdesk')
           PY
           cp .komiremote-downloads/verified-sha256.json komiremote-test-output/
           cp LICENCE komiremote-test-output/
