@@ -58,13 +58,21 @@ Le tag `v1.5.1-komi.71` est la première build publiée. La branche `main` conti
 
 Captures de KomiRemote v1.5.1-komi.71. Les IDs de connexion sont floutés ; les noms d’appareils restent visibles.
 
-| Accueil | À propos |
-|---|---|
-| ![Accueil KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-accueil.png) | ![À propos de KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-a-propos.png) |
+### Accueil
 
-| Demande de connexion | Barre d’outils de session |
-|---|---|
-| ![Demande de connexion](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png) | ![Barre d’outils de session](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils.png) |
+![Accueil KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-accueil.png)
+
+### À propos
+
+![À propos de KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-a-propos.png)
+
+### Demande de connexion
+
+![Demande de connexion](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png)
+
+### Barre d’outils de session
+
+![Barre d’outils de session](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils.png)
 
 ## Compilation (Windows)
 
