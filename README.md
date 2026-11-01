@@ -7,10 +7,15 @@
 
 <p align="center">
   <b>KomiRemote</b> — bureau à distance pour Windows, version modifiée de RustDesk.<br>
-  <a href="https://komjordan.fr/komi.html">Téléchargement</a> •
-  <a href="https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71">Code source v1.5.1-komi.71</a> •
-  <a href="docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md">Mentions légales</a> •
-  <a href="LICENCE">Licence AGPL-3.0</a>
+  <a href="https://komjordan.fr/komi.html">Télécharger</a> ·
+  <a href="docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md">Mentions légales</a> ·
+  <a href="LICENCE">AGPL-3.0</a>
+</p>
+
+<p align="center">
+  <strong>Version actuelle&nbsp;: <a href="https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71">v1.5.1-komi.71</a></strong>
+  <br>
+  <sub>Windows portable · première build publiée</sub>
 </p>
 
 > [!IMPORTANT]
@@ -48,11 +53,7 @@ L’exécutable n’est pas signé : Windows SmartScreen peut afficher un averti
 
 ## Code source correspondant
 
-| Version | Build | Source |
-|---|---|---|
-| 1.5.1 | 71 | [tag `v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71) |
-
-Le tag `v1.5.1-komi.71` est la première build publiée. La branche `main` contient la dernière version.
+La version portable publiée correspond au tag [`v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71). La branche `main` contient les évolutions ultérieures.
 
 ## Captures
 
