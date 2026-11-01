@@ -58,7 +58,13 @@ La branche `main` contient la dernière version.
 
 ## Captures
 
-Les captures d'écran de KomiRemote seront ajoutées dans `docs/komiremote/screenshots/`.
+Captures de KomiRemote v1.5.1-komi.71 (ID, mot de passe, noms d'appareils et empreinte floutés).
+
+| Thème sombre | Thème clair |
+|---|---|
+| ![Accueil – sombre](docs/komiremote/screenshots/komiremote-main-dark.png) | ![Accueil – clair](docs/komiremote/screenshots/komiremote-main-light.png) |
+| ![Paramètres – Général – sombre](docs/komiremote/screenshots/komiremote-parametres-general-dark.png) | ![Paramètres – Général – clair](docs/komiremote/screenshots/komiremote-parametres-general-light.png) |
+| ![À propos – sombre](docs/komiremote/screenshots/komiremote-a-propos-dark.png) | ![À propos – clair](docs/komiremote/screenshots/komiremote-a-propos-light.png) |
 
 ## Compilation (Windows)
 
