@@ -58,9 +58,7 @@ La branche `main` contient la dernière version.
 
 ## Captures
 
-Captures de KomiRemote : voir [docs/komiremote/screenshots/](docs/komiremote/screenshots/).
-
-<!-- KOMI-SCREENSHOTS -->
+Les captures d'écran de KomiRemote seront ajoutées dans `docs/komiremote/screenshots/`.
 
 ## Compilation (Windows)
 
