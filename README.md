@@ -38,7 +38,7 @@ KomiRemote reprend le moteur de bureau à distance de RustDesk OSS (base 1.5.0) 
 - nom de connexion personnalisé : un appareil peut être joint par son nom en complément de son ID numérique ;
 - page À propos avec licence, code source et mentions légales ;
 - notification de mise à jour basée sur `https://komjordan.fr/komi-version.json` (aucun téléchargement automatique) ;
-- les fonctions présentées (connexion, nom personnalisé, approbation, enregistrement et barre de session) s’utilisent sans compte. L’option « rédiger une note en fin de connexion », qui dépend d’un compte, reste masquée.
+- les fonctions présentées (connexion, nom personnalisé, approbation, enregistrement et barre de session) s’utilisent sans compte.
 
 ## Téléchargement
 
