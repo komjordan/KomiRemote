@@ -353,6 +353,19 @@ fn update_last_cursor_pos(x: i32, y: i32) {
     }
 }
 
+/// KomiRemote: remember which connection (and its presented name) moved the mouse.
+pub fn note_peer_cursor_controller(conn: i32, name: &str) {
+    LATEST_PEER_CURSOR_CONTROLLER
+        .lock()
+        .unwrap()
+        .note(conn, name, get_time());
+}
+
+/// KomiRemote: forget a closed connection's name tag.
+pub fn clear_peer_cursor_controller(conn: i32) {
+    LATEST_PEER_CURSOR_CONTROLLER.lock().unwrap().clear_conn(conn);
+}
+
 fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
     let (_, (x, y)) = *LATEST_SYS_CURSOR_POS.lock().unwrap();
     if x == INVALID_CURSOR_POS || y == INVALID_CURSOR_POS {
@@ -360,19 +373,28 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
     }
 
     if state.is_moved(x, y) {
+        let now = get_time();
+        // KomiRemote: tell the other viewers who is moving the cursor (empty when
+        // nobody remote moved it recently, e.g. the local user).
+        let (controller_name, controller_conn) = {
+            let lock = LATEST_PEER_CURSOR_CONTROLLER.lock().unwrap();
+            (lock.broadcast_name(now), lock.active_conn(now))
+        };
         let mut msg_out = Message::new();
         msg_out.set_cursor_position(CursorPosition {
             x,
             y,
+            controller_name,
             ..Default::default()
         });
         let exclude = {
-            let now = get_time();
             let lock = LATEST_PEER_INPUT_CURSOR.lock().unwrap();
             if now - lock.time < 300 {
                 lock.conn
             } else {
-                0
+                // The portable service may inject input in another process; the
+                // controller is still known here and needs no echo of its own moves.
+                controller_conn.unwrap_or(0)
             }
         };
         sp.send_without(msg_out, exclude);
@@ -502,6 +524,8 @@ lazy_static::lazy_static! {
     };
     static ref KEYS_DOWN: Arc<Mutex<HashMap<KeysDown, Instant>>> = Default::default();
     static ref LATEST_PEER_INPUT_CURSOR: Arc<Mutex<Input>> = Default::default();
+    // KomiRemote: last remote controller of the cursor (conn id, presented name, time).
+    static ref LATEST_PEER_CURSOR_CONTROLLER: Arc<Mutex<crate::komi_cursor_tag::CursorController>> = Default::default();
     static ref LATEST_SYS_CURSOR_POS: Arc<Mutex<(Option<Instant>, (i32, i32))>> = Arc::new(Mutex::new((None, (INVALID_CURSOR_POS, INVALID_CURSOR_POS))));
     // Track connections that are currently using relative mouse movement.
     // Used to disable whiteboard/cursor display for all events while in relative mode.

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -38,6 +37,8 @@ import 'desktop/pages/remote_page.dart' as desktop_remote;
 import 'desktop/pages/file_manager_page.dart' as desktop_file_manager;
 import 'desktop/pages/view_camera_page.dart' as desktop_view_camera;
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
+import 'package:flutter_hbb/desktop/komi_branding.dart' show isKomiRemote;
+import 'package:flutter_hbb/desktop/komi_public_names.dart';
 import 'models/model.dart';
 import 'models/platform_model.dart';
 
@@ -2593,6 +2594,26 @@ connect(BuildContext context, String id,
     } catch (_) {}
   }
   id = id.replaceAll(' ', '');
+  if (isKomiRemote) {
+    try {
+      id = await resolveKomiConnectionId(id,
+          isKomi: true,
+          registry: KomiNameRegistry.configured(), isKnownPeer: (candidate) {
+        try {
+          final peer = jsonDecode(bind.mainGetPeerSync(id: candidate));
+          return peer is Map && peer['info'] is Map;
+        } catch (_) {
+          return false;
+        }
+      });
+    } on PublicNameException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+  }
   final oldId = id;
   id = await bind.mainHandleRelayId(id: id);
   forceRelay = id != oldId || forceRelay;

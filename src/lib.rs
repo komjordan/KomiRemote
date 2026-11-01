@@ -46,6 +46,8 @@ pub mod core_main;
 mod custom_server;
 #[cfg(windows)]
 mod komi_config;
+pub mod komi_device_name;
+pub mod komi_cursor_tag;
 mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;

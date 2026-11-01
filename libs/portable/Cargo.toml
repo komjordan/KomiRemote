@@ -1,6 +1,6 @@
 [package]
 name = "rustdesk-portable-packer"
-version = "1.5.0"
+version = "1.5.1"
 edition = "2021"
 description = "RustDesk Remote Desktop"
 
@@ -28,7 +28,7 @@ native-windows-gui = {version = "1.0", default-features = false, features = ["an
 [package.metadata.winres]
 LegalCopyright = "Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved."
 ProductName = "Komi Remote"
-OriginalFilename = "rustdesk.exe"
+OriginalFilename = "KomiRemote.exe"
 FileDescription = "Komi Remote — RustDesk fork"
 #ProductVersion = ""
 

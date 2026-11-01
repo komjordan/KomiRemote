@@ -46,27 +46,27 @@ class BrandPresentation(unittest.TestCase):
             metadata = tomllib.loads((ROOT / path).read_text())['package']['metadata']['winres']
             self.assertEqual(metadata['ProductName'], 'Komi Remote')
             self.assertEqual(metadata['FileDescription'], 'Komi Remote — RustDesk fork')
-            self.assertEqual(metadata['OriginalFilename'], 'rustdesk.exe')
+            self.assertEqual(metadata['OriginalFilename'], 'KomiRemote.exe')
             self.assertIn('Purslane', metadata['LegalCopyright'])
         rc = (ROOT / 'flutter/windows/runner/Runner.rc').read_text()
         self.assertIn('VALUE "ProductName", "Komi Remote"', rc)
         self.assertIn('VALUE "CompanyName", "Komi Remote contributors"', rc)
-        self.assertIn('VALUE "InternalName", "rustdesk"', rc)
-        self.assertIn('VALUE "OriginalFilename", "rustdesk.exe"', rc)
+        self.assertIn('VALUE "InternalName", "KomiRemote"', rc)
+        self.assertIn('VALUE "OriginalFilename", "KomiRemote.exe"', rc)
         self.assertIn('Purslane Tech Pte. Ltd. All rights reserved.', rc)
 
-    def test_about_identifies_fork_and_corresponding_source(self):
+    def test_about_keeps_required_legal_access_without_removed_project_lines(self):
         about = (ROOT / 'flutter/lib/desktop/pages/desktop_setting_page.dart').read_text().split('class _AboutState', 1)[1]
-        self.assertIn('if (isKomiRemote) ..._komiAboutInfo(linkStyle)', about)
-        for required in ('Nom : KomiRemote', 'Éditeur : Komjordan', 'https://komjordan.fr',
-                         'Fork indépendant de RustDesk OSS', 'Licence : GNU AGPL-3.0',
-                         'https://github.com/komjordan/KomiRemote',
-                         'https://github.com/rustdesk/rustdesk',
-                         'Version modifiée de RustDesk', 'SANS AUCUNE GARANTIE'):
+        self.assertIn('_komiAboutInfo(', about)
+        for required in ('Description : Bureau à distance', 'Éditeur : Axel KAMGAING KOM', 'https://komjordan.fr',
+                         'Licence : GNU AGPL-3.0',
+                         'Empreinte numérique', 'LEGAL-NOTICES-KOMIREMOTE.md'):
             self.assertIn(required, about)
-        # Upstream copyright and licence text must stay visible (AGPL-3.0 section 5).
+        self.assertNotIn('Fork indépendant de RustDesk OSS', about)
+        self.assertNotIn("link('Code source'", about)
+        self.assertNotIn("Projet d'origine", about)
+        # Upstream attribution and access to full legal notices remain visible.
         self.assertIn('Purslane Tech Pte. Ltd.', about)
-        self.assertIn('$license', about)
 
     def test_manual_approval_is_engine_default(self):
         cfg = (ROOT / 'src/komi_config.rs').read_text()

@@ -1354,6 +1354,10 @@ pub fn get_install_options() -> String {
 }
 
 pub fn get_silent_install_options(printer_override: Option<bool>) -> &'static str {
+    // KomiRemote never rehydrates PRINTER=1, even with an explicit override.
+    if crate::get_app_name() == "KomiRemote" {
+        return "desktopicon startmenu";
+    }
     let install_printer = match printer_override {
         Some(override_value) => override_value,
         None => {
@@ -1582,6 +1586,42 @@ fn get_after_install(
     ", create_service=get_create_service(&exe))
 }
 
+// Installation is not an explicit remote-printing operation. In KomiRemote it
+// must leave existing printers and drivers untouched, for both boolean choices.
+fn installer_printer_command(app_name: &str, requested: bool, win10: bool, exe: &str) -> String {
+    if app_name == "KomiRemote" {
+        return String::new();
+    }
+    if requested && win10 {
+        format!("\"{}\" --install-remote-printer", exe)
+    } else if win10 {
+        format!("\"{}\" --uninstall-remote-printer", exe)
+    } else {
+        String::new()
+    }
+}
+
+#[cfg(test)]
+mod komi_installer_policy_tests {
+    use super::installer_printer_command;
+
+    #[test]
+    fn komi_printer_is_noop_for_all_install_choices() {
+        for requested in [false, true] {
+            for win10 in [false, true] {
+                assert!(installer_printer_command("KomiRemote", requested, win10, "fixture.exe").is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn upstream_printer_policy_is_preserved() {
+        assert!(installer_printer_command("RustDesk", true, true, "fixture.exe").contains("--install-remote-printer"));
+        assert!(installer_printer_command("RustDesk", false, true, "fixture.exe").contains("--uninstall-remote-printer"));
+        assert!(installer_printer_command("RustDesk", true, false, "fixture.exe").is_empty());
+    }
+}
+
 pub fn install_me(options: &str, path: String, silent: bool, debug: bool) -> ResultType<()> {
     // MSI and EXE installations use different registry layouts, so MSI-to-EXE upgrades are not supported.
     let (installed_subkey, _, _, _) = get_install_info();
@@ -1667,7 +1707,8 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{start_menu}\\\"
         );
         reg_value_start_menu_shortcuts = "1".to_owned();
     }
-    let install_printer = options.contains("printer") && is_win_10_or_greater();
+    let install_printer = app_name != "KomiRemote"
+        && options.contains("printer") && is_win_10_or_greater();
     if install_printer {
         reg_value_printer = "1".to_owned();
     }
@@ -1708,15 +1749,9 @@ copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\
 ")
     };
 
-    let install_remote_printer = if install_printer {
-        // No need to use `|| true` here.
-        // The script will not exit even if `--install-remote-printer` panics.
-        format!("\"{}\" --install-remote-printer", &src_exe)
-    } else if is_win_10_or_greater() {
-        format!("\"{}\" --uninstall-remote-printer", &src_exe)
-    } else {
-        "".to_owned()
-    };
+    let install_remote_printer = installer_printer_command(
+        &app_name, install_printer, is_win_10_or_greater(), &src_exe,
+    );
 
     // Remember to check if `update_me` need to be changed if changing the `cmds`.
     // No need to merge the existing dup code, because the code in these two functions are too critical.
@@ -1760,7 +1795,7 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
             &exe,
             Some(reg_value_start_menu_shortcuts),
             Some(reg_value_desktop_shortcuts),
-            Some(reg_value_printer)
+            if app_name == "KomiRemote" { None } else { Some(reg_value_printer) }
         ),
         sleep = if debug { "timeout 300" } else { "" },
         dels = if debug { "" } else { &dels },
@@ -3523,7 +3558,9 @@ reg add {subkey} /f /v EstimatedSize /t REG_DWORD /d {size}
     };
 
     // No need to check the install option here, `is_rd_printer_installed` rarely fails.
-    let is_printer_installed = remote_printer::is_rd_printer_installed(&app_name).unwrap_or(false);
+    // KomiRemote updates do not migrate, uninstall, or reinstall printers.
+    let is_printer_installed = app_name != "KomiRemote"
+        && remote_printer::is_rd_printer_installed(&app_name).unwrap_or(false);
     // Do nothing if the printer is not installed or failed to query if the printer is installed.
     let (uninstall_printer_cmd, install_printer_cmd) = if is_printer_installed {
         (

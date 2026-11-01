@@ -14,6 +14,7 @@ import 'package:visibility_detector/visibility_detector.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../common.dart';
+import '../../desktop/komi_branding.dart';
 import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 import 'peer_card.dart';
@@ -187,13 +188,17 @@ class _PeersViewState extends State<_PeersView>
       child: Consumer<Peers>(builder: (context, peers, child) {
         if (peers.peers.isEmpty) {
           gFFI.peerTabModel.setCurrentTabCachedPeers([]);
+          final komiRecentEmpty =
+              isKomiRemote && widget.peers.loadEvent == LoadEvent.recent;
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.sentiment_very_dissatisfied_rounded,
-                  color: Theme.of(context).tabBarTheme.labelColor,
+                  color: komiRecentEmpty
+                      ? MyTheme.accent
+                      : Theme.of(context).tabBarTheme.labelColor,
                   size: 40,
                 ).paddingOnly(bottom: 10),
                 Text(

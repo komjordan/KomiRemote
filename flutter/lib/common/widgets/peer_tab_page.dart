@@ -23,7 +23,22 @@ import 'package:provider/provider.dart';
 import 'package:pull_down_button/pull_down_button.dart';
 
 import '../../common.dart';
+import '../../desktop/komi_branding.dart' show isKomiRemote;
 import '../../models/platform_model.dart';
+
+Color _komiPeerActionColor(BuildContext context,
+    {bool active = true, bool enabled = true}) {
+  if (!isKomiRemote) {
+    return enabled
+        ? (Theme.of(context).textTheme.titleLarge?.color ??
+            Theme.of(context).hintColor)
+        : Theme.of(context).disabledColor;
+  }
+  if (!enabled) return Theme.of(context).disabledColor;
+  return isKomiRemote
+      ? MyTheme.accent.withOpacity(active ? 1 : 0.68)
+      : MyTheme.accent;
+}
 
 class PeerTabPage extends StatefulWidget {
   const PeerTabPage({Key? key}) : super(key: key);
@@ -144,9 +159,11 @@ class _PeerTabPageState extends State<PeerTabPage>
         physics: NeverScrollableScrollPhysics(),
         children: model.visibleEnabledOrderedIndexs.map((t) {
           final selected = model.currentTab == t;
-          final color = selected
-              ? MyTheme.tabbar(context).selectedTextColor
-              : MyTheme.tabbar(context).unSelectedTextColor
+          final color = isKomiRemote
+              ? _komiPeerActionColor(context, active: selected)
+              : selected
+                  ? MyTheme.tabbar(context).selectedTextColor
+                  : MyTheme.tabbar(context).unSelectedTextColor
             ?..withOpacity(0.5);
           final hover = false.obs;
           final deco = BoxDecoration(
@@ -239,7 +256,6 @@ class _PeerTabPageState extends State<PeerTabPage>
   }
 
   Widget _createMultiSelection() {
-    final textColor = Theme.of(context).textTheme.titleLarge?.color;
     final model = Provider.of<PeerTabModel>(context);
     return _hoverAction(
       toolTip: translate('Select'),
@@ -254,7 +270,7 @@ class _PeerTabPageState extends State<PeerTabPage>
         "assets/checkbox-outline.svg",
         width: 18,
         height: 18,
-        colorFilter: svgColor(textColor),
+        colorFilter: svgColor(_komiPeerActionColor(context)),
       ),
     );
   }
@@ -515,7 +531,7 @@ class _PeerTabPageState extends State<PeerTabPage>
         onTap: () {
           model.selectAll();
         },
-        child: Icon(Icons.select_all),
+        child: Icon(Icons.select_all, color: _komiPeerActionColor(context)),
       ).marginOnly(left: 6),
     );
   }
@@ -681,7 +697,7 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
             },
             child: Icon(
               Icons.search_rounded,
-              color: Theme.of(context).hintColor,
+              color: _komiPeerActionColor(context),
             ));
   }
 
@@ -707,7 +723,7 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
                   children: [
                     Icon(
                       Icons.search_rounded,
-                      color: Theme.of(context).hintColor,
+                      color: _komiPeerActionColor(context),
                     ).marginSymmetric(horizontal: 4),
                     Expanded(
                       child: TextField(
@@ -844,6 +860,7 @@ class _PeerViewDropdownState extends State<PeerViewDropdown> {
                   ? Icons.view_list_rounded
                   : Icons.view_agenda_rounded,
           size: 18,
+          color: _komiPeerActionColor(context),
         ),
         onTapDown: (details) {
           final x = details.globalPosition.dx;
@@ -920,6 +937,7 @@ class _PeerSortDropdownState extends State<PeerSortDropdown> {
       child: Icon(
         Icons.sort_rounded,
         size: 18,
+        color: _komiPeerActionColor(context),
       ),
       onTapDown: (details) {
         final x = details.globalPosition.dx;

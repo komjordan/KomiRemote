@@ -1124,6 +1124,11 @@ pub fn get_custom_rendezvous_server(custom: String) -> String {
 
 #[inline]
 pub fn get_api_server(api: String, custom: String) -> String {
+    // KomiRemote runs on open-source hbbs/hbbr only: there is no API server on :21114.
+    // An empty API server makes heartbeat/sysinfo, audit, record-upload and account calls skip.
+    if config::APP_NAME.read().unwrap().as_str() == "KomiRemote" {
+        return "".to_owned();
+    }
     if Config::no_register_device() {
         return "".to_owned();
     }
@@ -2368,6 +2373,7 @@ pub(crate) fn initialize_komi_defaults() {
             &config::APP_NAME,
             &config::DEFAULT_SETTINGS,
             &config::DEFAULT_LOCAL_SETTINGS,
+            &config::DEFAULT_DISPLAY_SETTINGS,
         );
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "rustdesk"
-version = "1.5.0"
+version = "1.5.1"
 authors = ["rustdesk <info@rustdesk.com>"]
 edition = "2021"
 build= "build.rs"
@@ -114,6 +114,8 @@ qrcode-generator = "4.1"
 winapi = { version = "0.3", features = [
     "winuser",
     "wincrypt",
+    "dpapi",
+    "winbase",
     "shellscalingapi",
     "pdh",
     "synchapi",
@@ -257,7 +259,7 @@ webrtc-sctp = { git = "https://github.com/rustdesk-org/webrtc", rev = "49c89bd8d
 LegalCopyright = "Copyright © 2026 Purslane Tech Pte. Ltd. All rights reserved."
 ProductName = "Komi Remote"
 FileDescription = "Komi Remote — RustDesk fork"
-OriginalFilename = "rustdesk.exe"
+OriginalFilename = "KomiRemote.exe"
 
 [target.'cfg(target_os="windows")'.build-dependencies]
 winres = "0.1"

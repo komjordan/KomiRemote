@@ -74,10 +74,10 @@ class _ButtonState extends State<Button> {
                   ),
                   style: TextStyle(
                       fontSize: widget.textSize ?? 12.0,
-                      color: widget.isOutline
-                          ? widget.textColor ??
-                              Theme.of(context).textTheme.titleLarge?.color
-                          : Colors.white),
+                      color: widget.textColor ??
+                          (widget.isOutline
+                              ? Theme.of(context).textTheme.titleLarge?.color
+                              : Colors.white)),
                 ).marginSymmetric(horizontal: 12),
               )),
         ));
@@ -157,10 +157,10 @@ class _FixedWidthButtonState extends State<FixedWidthButton> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: widget.textSize ?? 12.0,
-                        color: widget.isOutline
-                            ? widget.textColor ??
-                                Theme.of(context).textTheme.titleLarge?.color
-                            : Colors.white),
+                        color: widget.textColor ??
+                            (widget.isOutline
+                                ? Theme.of(context).textTheme.titleLarge?.color
+                                : Colors.white)),
                   ).marginSymmetric(horizontal: 12),
                 ),
               ],

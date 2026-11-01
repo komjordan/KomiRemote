@@ -256,8 +256,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     menu.addAll([
       MenuEntryButton<String>(
         childBuilder: (TextStyle? style) => Obx(() => Text(
-              translate(
-                  toolbarState.hide.isTrue ? 'Show Toolbar' : 'Hide Toolbar'),
+              translate(toolbarState.isCollapsed
+                  ? 'Expand Toolbar'
+                  : 'Minimize Toolbar'),
               style: style,
             )),
         proc: () {

@@ -21,6 +21,7 @@ import '../../common/widgets/chat_page.dart';
 import '../../models/file_model.dart';
 import '../../models/platform_model.dart';
 import '../../models/server_model.dart';
+import 'server_page_theme.dart';
 
 /// Set only by this window's own close control, and only once the user has confirmed. Any other
 /// way the window can go - a session logout closing every window, the window manager, a native
@@ -66,7 +67,9 @@ class _DesktopServerPageState extends State<DesktopServerPage>
     // Other platforms keep the old behaviour exactly: the ambiguity this guards against is a
     // Linux session logout, which closes every window in the session.
     final byOperator = _cmClosedByOperator || !isLinux;
-    Future.wait([gFFI.serverModel.closeAll(byOperator: byOperator), gFFI.close()]).then((_) {
+    Future.wait(
+            [gFFI.serverModel.closeAll(byOperator: byOperator), gFFI.close()])
+        .then((_) {
       if (isMacOS) {
         RdPlatformChannel.instance.terminate();
       } else {
@@ -94,7 +97,7 @@ class _DesktopServerPageState extends State<DesktopServerPage>
       child: Consumer<ServerModel>(
         builder: (context, serverModel, child) {
           final body = Scaffold(
-            backgroundColor: Theme.of(context).colorScheme.background,
+            backgroundColor: Theme.of(context).colorScheme.surface,
             body: ConnectionManager(),
           );
           return isLinux
@@ -455,17 +458,11 @@ class _CmHeaderState extends State<_CmHeader>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final colors = ServerPageColors(Theme.of(context));
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10.0),
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [
-            Color(0xff00bfe1),
-            Color(0xff0071ff),
-          ],
-        ),
+        color: colors.headerBackground,
       ),
       margin: EdgeInsets.symmetric(horizontal: 5.0, vertical: 10.0),
       padding: EdgeInsets.only(
@@ -487,7 +484,7 @@ class _CmHeaderState extends State<_CmHeader>
                     child: Text(
                   client.name,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.headerForeground,
                     fontWeight: FontWeight.bold,
                     fontSize: 20,
                     overflow: TextOverflow.ellipsis,
@@ -497,35 +494,40 @@ class _CmHeaderState extends State<_CmHeader>
                 FittedBox(
                   child: Text(
                     "(${client.peerId})",
-                    style: TextStyle(color: Colors.white, fontSize: 14),
+                    style:
+                        TextStyle(color: colors.headerForeground, fontSize: 14),
                   ),
                 ),
                 if (client.type_() == ClientType.terminal)
                   FittedBox(
                     child: Text(
                       translate("Terminal"),
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                          color: colors.headerForeground, fontSize: 12),
                     ),
                   ),
                 if (client.type_() == ClientType.file)
                   FittedBox(
                     child: Text(
                       translate("Transfer file"),
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                          color: colors.headerForeground, fontSize: 12),
                     ),
                   ),
                 if (client.type_() == ClientType.camera)
                   FittedBox(
                     child: Text(
                       translate("View camera"),
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                          color: colors.headerForeground, fontSize: 12),
                     ),
                   ),
                 if (client.portForward.isNotEmpty)
                   FittedBox(
                     child: Text(
                       "Port Forward: ${client.portForward}",
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                      style: TextStyle(
+                          color: colors.headerForeground, fontSize: 12),
                     ),
                   ),
                 SizedBox(height: 10.0),
@@ -538,7 +540,7 @@ class _CmHeaderState extends State<_CmHeader>
                               ? translate("Disconnected")
                               : translate("Connected")
                           : "${translate("Request access to your device")}...",
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: colors.headerForeground),
                     ).marginOnly(right: 8.0),
                     if (client.authorized)
                       Obx(
@@ -546,7 +548,7 @@ class _CmHeaderState extends State<_CmHeader>
                           formatDurationToTime(
                             Duration(seconds: _time.value),
                           ),
-                          style: TextStyle(color: Colors.white),
+                          style: TextStyle(color: colors.headerForeground),
                         ),
                       )
                   ],
@@ -568,9 +570,13 @@ class _CmHeaderState extends State<_CmHeader>
                       .toggleCMChatPage(MessageKey(client.peerId, client.id));
                 }
               }),
-              icon: SvgPicture.asset(client.type_() == ClientType.file
-                  ? 'assets/file_transfer.svg'
-                  : 'assets/chat2.svg'),
+              icon: SvgPicture.asset(
+                client.type_() == ClientType.file
+                    ? 'assets/file_transfer.svg'
+                    : 'assets/chat2.svg',
+                colorFilter:
+                    ColorFilter.mode(colors.headerForeground, BlendMode.srcIn),
+              ),
               splashRadius: kDesktopIconButtonSplashRadius,
             ),
           )
@@ -593,19 +599,20 @@ class _CmHeaderState extends State<_CmHeader>
   }
 
   Widget _buildInitialAvatar() {
+    final colors = ServerPageColors(Theme.of(context));
     return Container(
       width: 70,
       height: 70,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: str2color(client.name),
+        color: colors.headerBackground,
         borderRadius: BorderRadius.circular(15.0),
       ),
       child: Text(
         client.name.isNotEmpty ? client.name[0] : '?',
         style: TextStyle(
           fontWeight: FontWeight.bold,
-          color: Colors.white,
+          color: colors.headerForeground,
           fontSize: 55,
         ),
       ),
@@ -627,14 +634,13 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
   Widget buildPermissionIcon(bool enabled, IconData iconData,
       Function(bool)? onTap, String tooltipText,
       {required bool canModify}) {
+    final colors = ServerPageColors(Theme.of(context));
     return Tooltip(
       message: "$tooltipText: ${enabled ? "ON" : "OFF"}",
       waitDuration: Duration.zero,
       child: Container(
         decoration: BoxDecoration(
-          color: enabled
-              ? (canModify ? MyTheme.accent : MyTheme.accent.withOpacity(0.6))
-              : Colors.grey[700],
+          color: colors.permissionBackground(enabled, canModify),
           borderRadius: BorderRadius.circular(10.0),
         ),
         padding: EdgeInsets.all(8.0),
@@ -649,7 +655,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
               Expanded(
                 child: Icon(
                   iconData,
-                  color: Colors.white,
+                  color: colors.permissionForeground(enabled, canModify),
                 ),
               ),
             ],
@@ -662,6 +668,7 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
   @override
   Widget build(BuildContext context) {
     final crossAxisCount = 4;
+    final colors = ServerPageColors(Theme.of(context));
     final spacing = 10.0;
     final canModifyPermission =
         bind.mainGetBuildinOption(key: kOptionEnablePermChangeInAcceptWindow) !=
@@ -673,10 +680,10 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
       padding: EdgeInsets.all(5.0),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10.0),
-        color: Theme.of(context).colorScheme.background,
+        color: colors.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: colors.shadow.withOpacity(0.2),
             spreadRadius: 1,
             blurRadius: 1,
             offset: Offset(0, 1.5),
@@ -688,7 +695,10 @@ class _PrivilegeBoardState extends State<_PrivilegeBoard> {
         children: [
           Text(
             translate("Permissions"),
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: colors.onSurface,
+                fontSize: 16,
+                fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ).marginOnly(left: 4.0, bottom: 8.0),
           Expanded(
@@ -880,6 +890,7 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   buildAuthorized(BuildContext context) {
+    final colors = ServerPageColors(Theme.of(context));
     final bool canElevate = bind.cmCanElevate();
     final model = Provider.of<ServerModel>(context);
     final showElevation = canElevate &&
@@ -894,7 +905,7 @@ class _CmControlPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: buildButton(context,
-                    color: MyTheme.accent,
+                    color: colors.acceptBackground,
                     onClick: null, onTapDown: (details) async {
                   final devicesInfo =
                       await AudioInput.getDevicesInfo(true, true);
@@ -951,24 +962,24 @@ class _CmControlPanel extends StatelessWidget {
                 },
                     icon: Icon(
                       Icons.call_rounded,
-                      color: Colors.white,
+                      color: colors.acceptForeground,
                       size: 14,
                     ),
                     text: "Audio input",
-                    textColor: Colors.white),
+                    textColor: colors.acceptForeground),
               ),
               Expanded(
                 child: buildButton(
                   context,
-                  color: Colors.red,
+                  color: colors.rejectBackground,
                   onClick: () => closeVoiceCall(),
                   icon: Icon(
                     Icons.call_end_rounded,
-                    color: Colors.white,
+                    color: colors.rejectForeground,
                     size: 14,
                   ),
                   text: "Stop voice call",
-                  textColor: Colors.white,
+                  textColor: colors.rejectForeground,
                 ),
               )
             ],
@@ -980,28 +991,28 @@ class _CmControlPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: buildButton(context,
-                    color: MyTheme.accent,
+                    color: colors.acceptBackground,
                     onClick: () => handleVoiceCall(true),
                     icon: Icon(
                       Icons.call_rounded,
-                      color: Colors.white,
+                      color: colors.acceptForeground,
                       size: 14,
                     ),
                     text: "Accept",
-                    textColor: Colors.white),
+                    textColor: colors.acceptForeground),
               ),
               Expanded(
                 child: buildButton(
                   context,
-                  color: Colors.red,
+                  color: colors.rejectBackground,
                   onClick: () => handleVoiceCall(false),
                   icon: Icon(
                     Icons.phone_disabled_rounded,
-                    color: Colors.white,
+                    color: colors.rejectForeground,
                     size: 14,
                   ),
                   text: "Dismiss",
-                  textColor: Colors.white,
+                  textColor: colors.rejectForeground,
                 ),
               )
             ],
@@ -1010,43 +1021,43 @@ class _CmControlPanel extends StatelessWidget {
         Offstage(
           offstage: !client.fromSwitch,
           child: buildButton(context,
-              color: Colors.purple,
+              color: colors.acceptBackground,
               onClick: () => handleSwitchBack(context),
-              icon: Icon(Icons.reply, color: Colors.white),
+              icon: Icon(Icons.reply, color: colors.acceptForeground),
               text: "Switch Sides",
-              textColor: Colors.white),
+              textColor: colors.acceptForeground),
         ),
         Offstage(
           offstage: !showElevation,
           child: buildButton(
             context,
-            color: MyTheme.accent,
+            color: colors.elevateBackground,
             onClick: () {
               handleElevate(context);
               windowManager.minimize();
             },
             icon: Icon(
               Icons.security_rounded,
-              color: Colors.white,
+              color: colors.elevateForeground,
               size: 14,
             ),
             text: 'Elevate',
-            textColor: Colors.white,
+            textColor: colors.elevateForeground,
           ),
         ),
         Row(
           children: [
             Expanded(
               child: buildButton(context,
-                  color: Colors.redAccent,
+                  color: colors.rejectBackground,
                   onClick: handleDisconnect,
                   text: 'Disconnect',
                   icon: Icon(
                     Icons.link_off_rounded,
-                    color: Colors.white,
+                    color: colors.rejectForeground,
                     size: 14,
                   ),
-                  textColor: Colors.white),
+                  textColor: colors.rejectForeground),
             ),
           ],
         )
@@ -1055,20 +1066,22 @@ class _CmControlPanel extends StatelessWidget {
   }
 
   buildDisconnected(BuildContext context) {
+    final colors = ServerPageColors(Theme.of(context));
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Expanded(
             child: buildButton(context,
-                color: MyTheme.accent,
+                color: colors.acceptBackground,
                 onClick: handleClose,
                 text: 'Close',
-                textColor: Colors.white)),
+                textColor: colors.acceptForeground)),
       ],
     ).marginOnly(bottom: buttonBottomMargin);
   }
 
   buildUnAuthorized(BuildContext context) {
+    final colors = ServerPageColors(Theme.of(context));
     final bool canElevate = bind.cmCanElevate();
     final model = Provider.of<ServerModel>(context);
     final showElevation = canElevate &&
@@ -1083,19 +1096,20 @@ class _CmControlPanel extends StatelessWidget {
       children: [
         Offstage(
           offstage: !showElevation || !showAccept,
-          child: buildButton(context, color: Colors.green[700], onClick: () {
+          child:
+              buildButton(context, color: colors.elevateBackground, onClick: () {
             handleAccept(context);
             handleElevate(context);
             windowManager.minimize();
           },
-              text: 'Accept and Elevate',
-              icon: Icon(
-                Icons.security_rounded,
-                color: Colors.white,
-                size: 14,
-              ),
-              textColor: Colors.white,
-              tooltip: 'accept_and_elevate_btn_tooltip'),
+                  text: 'Accept and Elevate',
+                  icon: Icon(
+                    Icons.security_rounded,
+                    color: colors.elevateForeground,
+                    size: 14,
+                  ),
+                  textColor: colors.elevateForeground,
+                  tooltip: 'accept_and_elevate_btn_tooltip'),
         ),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1106,13 +1120,13 @@ class _CmControlPanel extends StatelessWidget {
                   children: [
                     buildButton(
                       context,
-                      color: MyTheme.accent,
+                      color: colors.acceptBackground,
                       onClick: () {
                         handleAccept(context);
                         windowManager.minimize();
                       },
                       text: 'Accept',
-                      textColor: Colors.white,
+                      textColor: colors.acceptForeground,
                     ),
                   ],
                 ),
@@ -1121,10 +1135,10 @@ class _CmControlPanel extends StatelessWidget {
               child: buildButton(
                 context,
                 color: Colors.transparent,
-                border: Border.all(color: Colors.grey),
+                border: Border.all(color: colors.outline),
                 onClick: handleDisconnect,
                 text: 'Cancel',
-                textColor: null,
+                textColor: colors.cancelForeground,
               ),
             ),
           ],

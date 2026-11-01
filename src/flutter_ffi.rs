@@ -32,6 +32,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+// Direct C exports are compiled into librustdesk.dll without bridge regeneration.
+#[cfg(target_os = "windows")]
+#[path = "komi_names.rs"]
+mod komi_names;
+
 pub type SessionID = uuid::Uuid;
 
 lazy_static::lazy_static! {

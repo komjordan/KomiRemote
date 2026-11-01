@@ -11,6 +11,7 @@ import 'package:flutter_hbb/models/state_model.dart';
 import '../../consts.dart';
 import '../../common/widgets/overlay.dart';
 import '../../common/widgets/remote_input.dart';
+import '../../common/widgets/peer_cursor_name_tag.dart';
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/toolbar.dart';
@@ -987,6 +988,11 @@ class _RemotePageState extends State<RemotePage>
                   id: widget.id,
                   zoomCursor: _zoomCursor,
                 )));
+      // KomiRemote: name of the other viewer moving the cursor, if any.
+      paints.add(Obx(() =>
+          _showRemoteCursor.isFalse || _remoteCursorMoved.isFalse
+              ? Offstage()
+              : const PeerCursorNameTagPaint()));
     }
     paints.add(
       Positioned(
@@ -1432,6 +1438,36 @@ class _ImagePaintState extends State<ImagePaint> {
     } else {
       return child;
     }
+  }
+}
+
+/// Screen position of the remote cursor hotspot in the remote view, or null.
+Offset? remoteCursorHotspotOnScreen(CursorModel m, CanvasModel c) {
+  double cx = c.x;
+  double cy = c.y;
+  if (c.viewStyle.style == kRemoteViewStyleOriginal &&
+      c.scrollStyle == ScrollStyle.scrollbar) {
+    final rect = c.parent.target?.ffiModel.rect;
+    if (rect == null) return null;
+    if (cx < 0) cx = -rect.width * c.scale * c.scrollX;
+    if (cy < 0) cy = -rect.height * c.scale * c.scrollY;
+  }
+  // Same as CursorPaint's (x + hotx) * scale in both zoom modes.
+  return Offset(m.x * c.scale + cx, m.y * c.scale + cy);
+}
+
+class PeerCursorNameTagPaint extends StatelessWidget {
+  const PeerCursorNameTagPaint({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final m = Provider.of<CursorModel>(context);
+    final c = Provider.of<CanvasModel>(context);
+    final name = m.peerControllerName;
+    if (name.isEmpty) return const SizedBox.shrink();
+    final hotspot = remoteCursorHotspotOnScreen(m, c);
+    if (hotspot == null) return const SizedBox.shrink();
+    return PeerCursorNameTag(name: name, hotspot: hotspot);
   }
 }
 

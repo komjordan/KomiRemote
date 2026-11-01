@@ -43,6 +43,7 @@ import '../common/widgets/dialog.dart';
 import 'input_model.dart';
 import 'platform_model.dart';
 import 'package:flutter_hbb/utils/scale.dart';
+import 'package:flutter_hbb/common/widgets/peer_cursor_name_tag.dart';
 
 import 'package:flutter_hbb/generated_bridge.dart'
     if (dart.library.html) 'package:flutter_hbb/web/bridge.dart';
@@ -3113,6 +3114,10 @@ class CursorModel with ChangeNotifier {
       .subtract(Duration(milliseconds: 3000 * kMouseControlTimeoutMSec));
   String peerId = '';
   WeakReference<FFI> parent;
+  // KomiRemote: name of the other viewer currently moving the remote cursor.
+  String _peerControllerName = '';
+  Timer? _peerControllerNameTimer;
+  String get peerControllerName => _peerControllerName;
 
   // Only for mobile, touch mode
   // To block touch event above the KeyHelpTools
@@ -3812,12 +3817,26 @@ class CursorModel with ChangeNotifier {
     }
     _x = double.parse(evt['x']);
     _y = double.parse(evt['y']);
+    _setPeerControllerName(evt['name']);
     try {
       RemoteCursorMovedState.find(id).value = true;
     } catch (e) {
       //
     }
     notifyListeners();
+  }
+
+  void _setPeerControllerName(Object? raw) {
+    _peerControllerNameTimer?.cancel();
+    _peerControllerNameTimer = null;
+    _peerControllerName = sanitizePeerControllerName(raw);
+    if (_peerControllerName.isEmpty) return;
+    _peerControllerNameTimer = Timer(kPeerCursorNameTagTtl, () {
+      _peerControllerNameTimer = null;
+      if (_peerControllerName.isEmpty) return;
+      _peerControllerName = '';
+      notifyListeners();
+    });
   }
 
   updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {
@@ -3848,6 +3867,9 @@ class CursorModel with ChangeNotifier {
     _image = null;
     _firstUpdateMouseTime = null;
     gotMouseControl = true;
+    _peerControllerNameTimer?.cancel();
+    _peerControllerNameTimer = null;
+    _peerControllerName = '';
     disposeImages();
 
     _clearCache();

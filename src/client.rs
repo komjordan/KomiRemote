@@ -3816,6 +3816,11 @@ impl LoginConfigHandler {
             .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
+        // KomiRemote: the name chosen in KomiRemote (its confirmed public name,
+        // mirrored by the UI into this local option) comes first, then the
+        // build/account names, then the OS user name, then the host name.
+        let komi_chosen_name =
+            LocalConfig::get_option(crate::komi_cursor_tag::OPTION_KOMI_DISPLAY_NAME);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
         if display_name.is_empty() {
             display_name =
@@ -3831,25 +3836,34 @@ impl LoginConfigHandler {
                     })
                     .unwrap_or_default();
         }
-        if display_name.is_empty() {
-            display_name = crate::username();
-        }
-        let display_name = display_name
-            .split_whitespace()
-            .map(|word| {
-                word.chars()
-                    .enumerate()
-                    .map(|(i, c)| {
-                        if i == 0 {
-                            c.to_uppercase().to_string()
-                        } else {
-                            c.to_string()
-                        }
-                    })
-                    .collect::<String>()
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
+        let (display_name, chosen) = crate::komi_cursor_tag::select_display_name(
+            &komi_chosen_name,
+            &display_name,
+            &crate::username(),
+            &crate::hostname(),
+        );
+        // A name the user typed is shown as typed; fallbacks keep upstream's
+        // per-word capitalisation.
+        let display_name = if chosen {
+            display_name
+        } else {
+            display_name
+                .split_whitespace()
+                .map(|word| {
+                    word.chars()
+                        .enumerate()
+                        .map(|(i, c)| {
+                            if i == 0 {
+                                c.to_uppercase().to_string()
+                            } else {
+                                c.to_string()
+                            }
+                        })
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         #[cfg(not(target_os = "android"))]
         let my_platform = hbb_common::whoami::platform().to_string();
         #[cfg(target_os = "android")]

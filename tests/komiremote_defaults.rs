@@ -14,12 +14,14 @@ fn preserves_existing_default_entries() {
         "example.org:21117".to_owned(),
     )]));
     let local = RwLock::new(HashMap::from([("lang".to_owned(), "de".to_owned())]));
-    komi_config::initialize(&once, &name, &server, &local);
+    let display = RwLock::new(HashMap::from([("custom-fps".to_owned(), "24".to_owned())]));
+    komi_config::initialize(&once, &name, &server, &local, &display);
     assert_eq!(
         server.read().unwrap().get("relay-server").unwrap(),
         "example.org:21117"
     );
     assert_eq!(local.read().unwrap().get("lang").unwrap(), "de");
+    assert_eq!(display.read().unwrap().get("custom-fps").unwrap(), "24");
 }
 
 #[test]
@@ -28,9 +30,10 @@ fn repeated_and_concurrent_calls_do_not_reset_later_choices() {
     let name = RwLock::new("RustDesk".to_owned());
     let server = RwLock::new(HashMap::new());
     let local = RwLock::new(HashMap::new());
+    let display = RwLock::new(HashMap::new());
     std::thread::scope(|scope| {
         for _ in 0..8 {
-            scope.spawn(|| komi_config::initialize(&once, &name, &server, &local));
+            scope.spawn(|| komi_config::initialize(&once, &name, &server, &local, &display));
         }
     });
     *name.write().unwrap() = "SignedClient".to_owned();
@@ -46,7 +49,7 @@ fn repeated_and_concurrent_calls_do_not_reset_later_choices() {
         .write()
         .unwrap()
         .insert("lang".to_owned(), "".to_owned());
-    komi_config::initialize(&once, &name, &server, &local);
+    komi_config::initialize(&once, &name, &server, &local, &display);
     assert_eq!(*name.read().unwrap(), "SignedClient");
     assert_eq!(
         server.read().unwrap().get("key").unwrap(),
@@ -62,7 +65,8 @@ fn initializes_public_defaults_without_writing_user_configuration() {
     let name = RwLock::new("RustDesk".to_owned());
     let server = RwLock::new(HashMap::new());
     let local = RwLock::new(HashMap::new());
-    komi_config::initialize(&once, &name, &server, &local);
+    let display = RwLock::new(HashMap::new());
+    komi_config::initialize(&once, &name, &server, &local, &display);
     assert_eq!(*name.read().unwrap(), "KomiRemote");
     assert_eq!(
         server
@@ -86,4 +90,22 @@ fn initializes_public_defaults_without_writing_user_configuration() {
     assert_eq!(server.read().unwrap().get("approve-mode").unwrap(), "click");
     assert_eq!(server.read().unwrap().len(), 4);
     assert_eq!(local.read().unwrap().len(), 2);
+    assert_eq!(display.read().unwrap().get("custom-fps").unwrap(), "60");
+    assert_eq!(display.read().unwrap().get("codec-preference").unwrap(), "auto");
+    assert_eq!(display.read().unwrap().get("show_remote_cursor").unwrap(), "Y");
+    assert_eq!(display.read().unwrap().len(), 3);
+}
+
+#[test]
+fn remote_cursor_default_does_not_override_an_explicit_choice() {
+    let once = Once::new();
+    let name = RwLock::new("RustDesk".to_owned());
+    let server = RwLock::new(HashMap::new());
+    let local = RwLock::new(HashMap::new());
+    let display = RwLock::new(HashMap::from([(
+        "show_remote_cursor".to_owned(),
+        "".to_owned(),
+    )]));
+    komi_config::initialize(&once, &name, &server, &local, &display);
+    assert_eq!(display.read().unwrap().get("show_remote_cursor").unwrap(), "");
 }

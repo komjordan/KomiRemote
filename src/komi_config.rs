@@ -7,6 +7,7 @@ pub(crate) fn initialize(
     app_name: &RwLock<String>,
     server_defaults: &RwLock<HashMap<String, String>>,
     local_defaults: &RwLock<HashMap<String, String>>,
+    display_defaults: &RwLock<HashMap<String, String>>,
 ) {
     once.call_once(|| {
         *app_name.write().unwrap() = "KomiRemote".to_owned();
@@ -27,6 +28,19 @@ pub(crate) fn initialize(
         let mut local = local_defaults.write().unwrap();
         for (key, value) in [("lang", "fr"), ("theme", "dark")] {
             local
+                .entry(key.to_owned())
+                .or_insert_with(|| value.to_owned());
+        }
+        drop(local);
+        // Viewer defaults: 60 fps, automatic codec choice and the remote cursor shown
+        // (saved per-peer values and user-chosen defaults still win).
+        let mut display = display_defaults.write().unwrap();
+        for (key, value) in [
+            ("custom-fps", "60"),
+            ("codec-preference", "auto"),
+            ("show_remote_cursor", "Y"),
+        ] {
+            display
                 .entry(key.to_owned())
                 .or_insert_with(|| value.to_owned());
         }

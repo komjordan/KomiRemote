@@ -4,6 +4,10 @@ fn main() {
         use std::io::Write;
         let mut res = winres::WindowsResource::new();
         res.set_icon("../../res/icon.ico")
+            .set("ProductName", "KomiRemote")
+            .set("FileDescription", "KomiRemote Portable")
+            .set("InternalName", "KomiRemote")
+            .set("OriginalFilename", "KomiRemote.exe")
             .set_language(winapi::um::winnt::MAKELANGID(
                 winapi::um::winnt::LANG_ENGLISH,
                 winapi::um::winnt::SUBLANG_ENGLISH_US,

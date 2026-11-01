@@ -38,6 +38,7 @@ pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
 #[derive(Clone, Debug, Serialize)]
 pub struct UiStatus {
     pub status_num: i32,
+    pub ipc_connected: bool,
     #[cfg(not(feature = "flutter"))]
     pub key_confirmed: bool,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -58,6 +59,7 @@ pub struct LoginDeviceInfo {
 lazy_static::lazy_static! {
     static ref UI_STATUS : Arc<Mutex<UiStatus>> = Arc::new(Mutex::new(UiStatus{
         status_num: 0,
+        ipc_connected: false,
         #[cfg(not(feature = "flutter"))]
         key_confirmed: false,
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1401,6 +1403,7 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                 }
                                 *UI_STATUS.lock().unwrap() = UiStatus {
                                     status_num: x as _,
+                                    ipc_connected: true,
                                     #[cfg(not(feature = "flutter"))]
                                     key_confirmed: _c,
                                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1453,6 +1456,7 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
         }
         *UI_STATUS.lock().unwrap() = UiStatus {
             status_num: -1,
+            ipc_connected: false,
             #[cfg(not(feature = "flutter"))]
             key_confirmed,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
