@@ -51,20 +51,20 @@ L’exécutable n’est pas signé : Windows SmartScreen peut afficher un averti
 | Version | Build | Source |
 |---|---|---|
 | 1.5.1 | 71 | [tag `v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71) |
-| 1.5.1 | 70 | [tag `v1.5.1-komi.70`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.70) |
 
-Tous les tags publiés sont conservés : [liste des tags](https://github.com/komjordan/KomiRemote/tags).
-La branche `main` contient la dernière version.
+Le tag `v1.5.1-komi.71` est la première build publiée. La branche `main` contient la dernière version.
 
 ## Captures
 
-Captures de KomiRemote v1.5.1-komi.71 (ID, mot de passe, noms d'appareils et empreinte floutés).
+Captures de KomiRemote v1.5.1-komi.71. Les IDs de connexion sont floutés ; les noms d’appareils restent visibles.
 
-| Thème sombre | Thème clair |
+| Accueil | À propos |
 |---|---|
-| ![Accueil – sombre](docs/komiremote/screenshots/komiremote-main-dark.png) | ![Accueil – clair](docs/komiremote/screenshots/komiremote-main-light.png) |
-| ![Paramètres – Général – sombre](docs/komiremote/screenshots/komiremote-parametres-general-dark.png) | ![Paramètres – Général – clair](docs/komiremote/screenshots/komiremote-parametres-general-light.png) |
-| ![À propos – sombre](docs/komiremote/screenshots/komiremote-a-propos-dark.png) | ![À propos – clair](docs/komiremote/screenshots/komiremote-a-propos-light.png) |
+| ![Accueil KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-accueil.png) | ![À propos de KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-a-propos.png) |
+
+| Demande de connexion | Barre d’outils de session |
+|---|---|
+| ![Demande de connexion](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png) | ![Barre d’outils de session](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils.png) |
 
 ## Compilation (Windows)
 
