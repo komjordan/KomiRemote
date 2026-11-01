@@ -32,12 +32,13 @@
 KomiRemote reprend le moteur de bureau à distance de RustDesk OSS (base 1.5.0) et y ajoute une interface simplifiée en français pour un usage personnel sous Windows :
 
 - identité visuelle KomiRemote (icônes, logos, nom d’application `KomiRemote` séparé de RustDesk) ;
-- interface épurée : barre d’outils de session continue, textes et menus revus en français ;
+- interface épurée : barre de session repliable, disponible en mode minimal ou complet, textes et menus revus en français ;
 - approbation manuelle des connexions entrantes par défaut ;
 - enregistrement de session avec dialogue « enregistrement sauvegardé » ;
+- nom de connexion personnalisé : un appareil peut être joint par son nom en complément de son ID numérique ;
 - page À propos avec licence, code source et mentions légales ;
 - notification de mise à jour basée sur `https://komjordan.fr/komi-version.json` (aucun téléchargement automatique) ;
-- option « rédiger une note en fin de connexion » masquée (elle nécessite un compte).
+- les fonctions présentées (connexion, nom personnalisé, approbation, enregistrement et barre de session) s’utilisent sans compte. L’option « rédiger une note en fin de connexion », qui dépend d’un compte, reste masquée.
 
 ## Téléchargement
 
@@ -71,9 +72,31 @@ Captures de KomiRemote v1.5.1-komi.71. Les IDs de connexion sont floutés ; les 
 
 ![Demande de connexion](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png)
 
-### Barre d’outils de session
+### Nom de l’appareil
 
-![Barre d’outils de session](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils.png)
+Le nom de l’appareil permet de s’y connecter sans ressaisir son ID. Il se règle dans **Paramètres → Sécurité → Nom de connexion personnalisé**.
+
+![Information sur le nom de l’appareil](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-nom-appareil.png)
+
+### Nom de connexion personnalisé
+
+Le nom choisi complète l’ID numérique et peut être vérifié, appliqué ou libéré depuis les paramètres de sécurité.
+
+![Nom de connexion personnalisé](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-nom-connexion-personnalise.png)
+
+### Barre de session
+
+**Mode minimal**
+
+<p align="center">
+  <img src="docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils-minimale.png" alt="Barre de session minimale">
+</p>
+
+**Mode complet**
+
+<p align="center">
+  <img src="docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils-complete.png" alt="Barre de session complète">
+</p>
 
 ## Compilation (Windows)
 
