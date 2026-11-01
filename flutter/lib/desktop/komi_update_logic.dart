@@ -5,9 +5,9 @@ import 'dart:convert';
 const String kKomiUpdateHost = 'komjordan.fr';
 const String kKomiUpdateManifestUrl = 'https://komjordan.fr/komi-version.json';
 
-/// Version of this build. Keep in sync with flutter/pubspec.yaml (1.5.1+70).
+/// Version of this build. Keep in sync with flutter/pubspec.yaml (1.5.1+71).
 const String kKomiCurrentVersion = '1.5.1';
-const int kKomiCurrentBuild = 70;
+const int kKomiCurrentBuild = 71;
 
 const Duration kKomiUpdateCheckInterval = Duration(hours: 24);
 const Duration kKomiUpdateTimeout = Duration(seconds: 6);

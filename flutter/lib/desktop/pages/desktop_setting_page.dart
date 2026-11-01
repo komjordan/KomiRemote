@@ -620,7 +620,7 @@ class _GeneralState extends State<_General> {
       ));
     }
 
-    if (!bind.isDisableAccount()) {
+    if (kKomiNoteAtConnEndEnabled && !bind.isDisableAccount()) {
       children.add(_OptionCheckBox(
         context,
         'note-at-conn-end-tip',
@@ -2644,9 +2644,9 @@ class _AboutState extends State<_About> {
 const String kKomiLicenceUrl =
     'https://github.com/komjordan/KomiRemote/blob/main/LICENCE';
 const String kKomiSourceUrl =
-    'https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.70';
+    'https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71';
 const String kKomiLegalNoticesUrl =
-    'https://github.com/komjordan/KomiRemote/blob/v1.5.1-komi.70/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md';
+    'https://github.com/komjordan/KomiRemote/blob/v1.5.1-komi.71/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md';
 
 // Compact KomiRemote product information. Full modification, attribution and
 // no-warranty notices remain in LICENCE and LEGAL-NOTICES-KOMIREMOTE.md.

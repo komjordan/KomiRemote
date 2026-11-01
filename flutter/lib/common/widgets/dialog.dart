@@ -1719,7 +1719,7 @@ showAuditDialog(FFI ffi) async {
 }
 
 bool allowAskForNoteAtEndOfConnection(FFI? ffi, bool closedByControlling) {
-  if (ffi == null) {
+  if (!kKomiNoteAtConnEndEnabled || ffi == null) {
     return false;
   }
   return mainGetLocalBoolOptionSync(kOptionAllowAskForNoteAtEndOfConnection) &&

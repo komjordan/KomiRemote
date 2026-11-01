@@ -4,7 +4,7 @@ import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TAG = "v1.5.1-komi.70"
+TAG = "v1.5.1-komi.71"
 
 
 def read(rel):
@@ -127,7 +127,7 @@ class KomiV15Update(unittest.TestCase):
         version = re.search(r"kKomiCurrentVersion = '([\d.]+)'", logic).group(1)
         build = re.search(r"kKomiCurrentBuild = (\d+);", logic).group(1)
         self.assertRegex(read("flutter/pubspec.yaml"), rf"(?m)^version: {re.escape(version)}\+{build}$")
-        self.assertEqual((version, build), ("1.5.1", "70"))
+        self.assertEqual((version, build), ("1.5.1", "71"))
 
 
 class KomiV15Logos(unittest.TestCase):
