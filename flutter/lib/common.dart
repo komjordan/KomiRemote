@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -38,6 +37,8 @@ import 'desktop/pages/remote_page.dart' as desktop_remote;
 import 'desktop/pages/file_manager_page.dart' as desktop_file_manager;
 import 'desktop/pages/view_camera_page.dart' as desktop_view_camera;
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart';
+import 'package:flutter_hbb/desktop/komi_branding.dart' show isKomiRemote;
+import 'package:flutter_hbb/desktop/komi_public_names.dart';
 import 'models/model.dart';
 import 'models/platform_model.dart';
 
@@ -249,16 +250,16 @@ class MyTheme {
   MyTheme._();
 
   static const Color grayBg = Color(0xFFEFEFF2);
-  static const Color accent = Color(0xFF0071FF);
-  static const Color accent50 = Color(0x770071FF);
-  static const Color accent80 = Color(0xAA0071FF);
+  static const Color accent = Color(0xFF4FBB85);
+  static const Color accent50 = Color(0x774FBB85);
+  static const Color accent80 = Color(0xAA4FBB85);
   static const Color canvasColor = Color(0xFF212121);
   static const Color border = Color(0xFFCCCCCC);
   static const Color idColor = Color(0xFF00B6F0);
   static const Color darkGray = Color.fromARGB(255, 148, 148, 148);
   static const Color cmIdColor = Color(0xFF21790B);
   static const Color dark = Colors.black87;
-  static const Color button = Color(0xFF2C8CFF);
+  static const Color button = Color(0xFF4FBB85);
   static const Color hoverBorder = Color(0xFF999999);
 
   // ListTile
@@ -2593,6 +2594,26 @@ connect(BuildContext context, String id,
     } catch (_) {}
   }
   id = id.replaceAll(' ', '');
+  if (isKomiRemote) {
+    try {
+      id = await resolveKomiConnectionId(id,
+          isKomi: true,
+          registry: KomiNameRegistry.configured(), isKnownPeer: (candidate) {
+        try {
+          final peer = jsonDecode(bind.mainGetPeerSync(id: candidate));
+          return peer is Map && peer['info'] is Map;
+        } catch (_) {
+          return false;
+        }
+      });
+    } on PublicNameException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+  }
   final oldId = id;
   id = await bind.mainHandleRelayId(id: id);
   forceRelay = id != oldId || forceRelay;

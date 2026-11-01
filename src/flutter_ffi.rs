@@ -32,6 +32,11 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+// Direct C exports are compiled into librustdesk.dll without bridge regeneration.
+#[cfg(target_os = "windows")]
+#[path = "komi_names.rs"]
+mod komi_names;
+
 pub type SessionID = uuid::Uuid;
 
 lazy_static::lazy_static! {
@@ -39,6 +44,7 @@ lazy_static::lazy_static! {
 }
 
 fn initialize(app_dir: &str, custom_client_config: &str) {
+    crate::common::initialize_komi_defaults();
     flutter::async_tasks::start_flutter_async_runner();
     // `APP_DIR` is set in `main_get_data_dir_ios()` on iOS.
     #[cfg(not(target_os = "ios"))]

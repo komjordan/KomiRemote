@@ -22,6 +22,7 @@ import '../../models/platform_model.dart';
 import '../../common/shared_state.dart';
 import './popup_menu.dart';
 import './kb_layout_type_chooser.dart';
+import './remote_toolbar_compact.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
 
@@ -57,6 +58,23 @@ bool _isHorizontalEdge(_ToolbarEdge e) =>
     e == _ToolbarEdge.top || e == _ToolbarEdge.bottom;
 
 const _legacyRemoteMenubarDragX = 'remote-menubar-drag-x';
+
+class _RemoteToolbarMenuActivityScope extends InheritedWidget {
+  final RemoteToolbarMenuActivity activity;
+
+  const _RemoteToolbarMenuActivityScope({
+    required this.activity,
+    required super.child,
+  });
+
+  static RemoteToolbarMenuActivity? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<_RemoteToolbarMenuActivityScope>()
+      ?.activity;
+
+  @override
+  bool updateShouldNotify(_RemoteToolbarMenuActivityScope oldWidget) =>
+      activity != oldWidget.activity;
+}
 
 double _clampToolbarFraction(double fraction, double left, double right) {
   if (fraction < left) fraction = left;
@@ -268,6 +286,8 @@ class ToolbarState {
 
   bool get pin => _pin.value;
 
+  bool get isCollapsed => collapse.value || hide.value;
+
   /// Initialize all toolbar states from session options.
   /// This should be called once when the toolbar is first created.
   Future<void> init(SessionID sessionId) async {
@@ -292,16 +312,22 @@ class ToolbarState {
   }
 
   switchCollapse(SessionID sessionId) async {
-    bind.sessionToggleOption(
-        sessionId: sessionId, value: kOptionCollapseToolbar);
-    collapse.value = !collapse.value;
+    final nextCollapsed = !isCollapsed;
+    // A saved Hide Toolbar option predates the compact bar. Convert it to the
+    // compact state the first time the user toggles the toolbar.
+    if (hide.value) {
+      bind.sessionToggleOption(sessionId: sessionId, value: kOptionHideToolbar);
+      hide.value = false;
+    }
+    if (collapse.value != nextCollapsed) {
+      bind.sessionToggleOption(
+          sessionId: sessionId, value: kOptionCollapseToolbar);
+      collapse.value = nextCollapsed;
+    }
   }
 
-  // Switch hide state for entire toolbar visibility
-  switchHide(SessionID sessionId) async {
-    bind.sessionToggleOption(sessionId: sessionId, value: kOptionHideToolbar);
-    hide.value = !hide.value;
-  }
+  // Legacy menu actions now minimize/expand instead of hiding the toolbar.
+  switchHide(SessionID sessionId) => switchCollapse(sessionId);
 
   switchPin() async {
     _pin.value = !_pin.value;
@@ -325,12 +351,14 @@ class ToolbarState {
 
 class _ToolbarTheme {
   static const Color blueColor = MyTheme.button;
-  static const Color hoverBlueColor = MyTheme.accent;
+  // Hover fills must differ visibly from the base fill (MyTheme.accent is the
+  // same green as MyTheme.button, so it gave no hover feedback at all).
+  static const Color hoverBlueColor = Color(0xFF2E8B57);
   static Color inactiveColor = Colors.grey[800]!;
-  static Color hoverInactiveColor = Colors.grey[850]!;
+  static Color hoverInactiveColor = Colors.grey[700]!;
 
   static const Color redColor = Colors.redAccent;
-  static const Color hoverRedColor = Colors.red;
+  static const Color hoverRedColor = Color(0xFFC62828);
   // kMinInteractiveDimension
   static const double height = 20.0;
   static const double dividerHeight = 12.0;
@@ -351,6 +379,23 @@ class _ToolbarTheme {
 
   static Color borderColor(BuildContext context) =>
       MyTheme.color(context).border3 ?? MyTheme.border;
+
+  /// Same background as the expanded toolbar, falling back to the theme
+  /// surface so the collapsed bar follows light/dark themes.
+  static Color barBackground(BuildContext context) =>
+      Theme.of(context)
+          .menuBarTheme
+          .style
+          ?.backgroundColor
+          ?.resolve(WidgetState.values.toSet()) ??
+      Theme.of(context).colorScheme.surface;
+
+  /// Spacing around toolbar buttons, as on the expanded toolbar's buttons.
+  static EdgeInsets buttonMargin(bool isHorizontal) => isHorizontal
+      ? const EdgeInsets.symmetric(
+          horizontal: buttonHMargin, vertical: buttonVMargin)
+      : const EdgeInsets.symmetric(
+          horizontal: buttonVMargin, vertical: buttonHMargin);
 
   static Color? dividerColor(BuildContext context) =>
       MyTheme.color(context).divider;
@@ -461,6 +506,9 @@ class RemoteToolbar extends StatefulWidget {
 class _RemoteToolbarState extends State<RemoteToolbar> {
   late Debouncer<int> _debouncerHide;
   bool _isCursorOverImage = false;
+  bool _isPointerOverToolbar = false;
+  Duration? _lastAutoHideActivity;
+  late final RemoteToolbarMenuActivity _menuActivity;
   final _fraction = 0.5.obs;
   final _edge = _ToolbarEdge.top.obs;
   final _dragging = false.obs;
@@ -490,14 +538,37 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
     // setState(() {});
   }
 
-  RxBool get collapse => widget.state.collapse;
-  RxBool get hide => widget.state.hide;
   bool get pin => widget.state.pin;
 
   PeerInfo get pi => widget.ffi.ffiModel.pi;
   FfiModel get ffiModel => widget.ffi.ffiModel;
 
   triggerAutoHide() => _debouncerHide.value = _debouncerHide.value + 1;
+
+  void _onPointerActivity(PointerEvent event) {
+    if (widget.state.isCollapsed ||
+        pin ||
+        _dragging.isTrue ||
+        !_isCursorOverImage ||
+        _isPointerOverToolbar) {
+      return;
+    }
+    final lastActivity = _lastAutoHideActivity;
+    if (lastActivity != null &&
+        event.timeStamp - lastActivity < const Duration(milliseconds: 500)) {
+      return;
+    }
+    _lastAutoHideActivity = event.timeStamp;
+    triggerAutoHide();
+  }
+
+  void _onToolbarExit(PointerExitEvent _) {
+    _isPointerOverToolbar = false;
+    _lastAutoHideActivity = null;
+    if (_isCursorOverImage && !widget.state.isCollapsed) {
+      triggerAutoHide();
+    }
+  }
 
   void _minimize() async =>
       await WindowController.fromWindowId(windowId).minimize();
@@ -644,6 +715,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       widget.state.init(widget.ffi.sessionId);
     });
 
+    _menuActivity = RemoteToolbarMenuActivity(onIdle: triggerAutoHide);
     _debouncerHide = Debouncer<int>(
       Duration(milliseconds: 5000),
       onChanged: _debouncerHideProc,
@@ -652,8 +724,9 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
 
     widget.onEnterOrLeaveImageSetter(identityHashCode(this), (enter) {
       if (enter) {
-        triggerAutoHide();
         _isCursorOverImage = true;
+        _lastAutoHideActivity = null;
+        triggerAutoHide();
       } else {
         _isCursorOverImage = false;
       }
@@ -669,8 +742,15 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   }
 
   _debouncerHideProc(int v) {
-    if (!pin && collapse.isFalse && _isCursorOverImage && _dragging.isFalse) {
-      collapse.value = true;
+    if (shouldAutoCollapseRemoteToolbar(
+      expanded: !widget.state.isCollapsed,
+      pinned: pin,
+      dragging: _dragging.isTrue,
+      pointerOverToolbar: _isPointerOverToolbar,
+      cursorOverImage: _isCursorOverImage,
+      openMenuCount: _menuActivity.openMenuCount,
+    )) {
+      widget.state.collapse.value = true;
     }
   }
 
@@ -689,10 +769,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
           !_dockingOptionsInitialized.value) {
         return const SizedBox.shrink();
       }
-      // If toolbar is hidden, return empty widget
-      if (hide.value) {
-        return const SizedBox.shrink();
-      }
+
       final edge = _edge.value;
       final isHorizontal = _isHorizontalEdge(edge);
 
@@ -707,34 +784,53 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
         }
       });
 
+      // KomiRemote v12: the MouseRegion must wrap only the toolbar itself.
+      // Wrapping the full-size Align made an opaque hit target over the
+      // whole remote view, which swallowed every mouse event (no control).
       final toolbar = Align(
         alignment: _alignmentForEdge(edge, _fraction.value),
-        child: KeyedSubtree(
-          key: _toolbarKey,
-          child: collapse.isFalse
-              ? _buildToolbar(context, edge, isHorizontal)
-              : _buildDraggableCollapse(context, edge, isHorizontal),
+        child: MouseRegion(
+          hitTestBehavior: HitTestBehavior.deferToChild,
+          onEnter: (_) {
+            _isPointerOverToolbar = true;
+          },
+          onExit: _onToolbarExit,
+          child: KeyedSubtree(
+            key: _toolbarKey,
+            child: widget.state.isCollapsed
+                ? _buildDraggableCollapse(context, edge, isHorizontal,
+                    compact: true)
+                : _buildToolbar(context, edge, isHorizontal),
+          ),
         ),
       );
 
       // Always return the Stack — even when not dragging — so the toolbar's
       // position in the Element tree stays stable. Wrapping/unwrapping it
       // mid-drag was killing the Draggable's gesture state.
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          IgnorePointer(
-            child: Obx(() {
-              final pe = _previewEdge.value;
-              final pf = _previewFraction.value;
-              if (!_dragging.isTrue || pe == null || pf == null) {
-                return const SizedBox.shrink();
-              }
-              return _buildDragPreview(context, pe, pf, _toolbarSize.value);
-            }),
+      return _RemoteToolbarMenuActivityScope(
+        activity: _menuActivity,
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerHover: _onPointerActivity,
+          onPointerMove: _onPointerActivity,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              IgnorePointer(
+                child: Obx(() {
+                  final pe = _previewEdge.value;
+                  final pf = _previewFraction.value;
+                  if (!_dragging.isTrue || pe == null || pf == null) {
+                    return const SizedBox.shrink();
+                  }
+                  return _buildDragPreview(context, pe, pf, _toolbarSize.value);
+                }),
+              ),
+              toolbar,
+            ],
           ),
-          toolbar,
-        ],
+        ),
       );
     });
   }
@@ -762,18 +858,24 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   }
 
   Widget _buildDraggableCollapse(
-      BuildContext context, _ToolbarEdge edge, bool isHorizontal) {
+      BuildContext context, _ToolbarEdge edge, bool isHorizontal,
+      {bool compact = false}) {
     return Obx(() {
-      if (collapse.isFalse && _dragging.isFalse) {
+      if (!compact && !widget.state.isCollapsed && _dragging.isFalse) {
         triggerAutoHide();
       }
       final borderRadius = _collapseHandleBorderRadius(edge);
       return Offstage(
         offstage: _dragging.isTrue,
+        // Expanded: the handle buttons sit directly in the main bar, with no
+        // own frame, shadow or separator. Collapsed: keep the floating look.
         child: Material(
-          elevation: _ToolbarTheme.elevation,
-          shadowColor: MyTheme.color(context).shadow,
-          borderRadius: borderRadius,
+          type: compact ? MaterialType.canvas : MaterialType.transparency,
+          elevation: compact ? _ToolbarTheme.elevation : 0,
+          shadowColor:
+              compact ? MyTheme.color(context).shadow : Colors.transparent,
+          color: compact ? _ToolbarTheme.barBackground(context) : null,
+          borderRadius: compact ? borderRadius : null,
           child: _DraggableShowHide(
             id: widget.id,
             ffi: widget.ffi,
@@ -790,6 +892,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
             isHorizontal: isHorizontal,
             multiEdgeEnabled: _multiEdgeEnabled.value,
             toolbarState: widget.state,
+            compact: compact,
             setFullscreen: _setFullscreen,
             setMinimize: _minimize,
             borderRadius: borderRadius,
@@ -802,7 +905,19 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   Widget _buildToolbar(
       BuildContext context, _ToolbarEdge edge, bool isHorizontal) {
     final List<Widget> toolbarItems = [];
+    toolbarItems.add(_buildDraggableCollapse(context, edge, isHorizontal));
     toolbarItems.add(_PinMenu(state: widget.state));
+    toolbarItems
+        .add(_ControlMenu(id: widget.id, ffi: widget.ffi, state: widget.state));
+    if (!isWebDesktop) {
+      toolbarItems.add(_MobileActionMenu(ffi: widget.ffi));
+    }
+    toolbarItems.add(_DisplayMenu(
+      id: widget.id,
+      ffi: widget.ffi,
+      state: widget.state,
+      setFullscreen: _setFullscreen,
+    ));
     toolbarItems.add(Obx(() {
       final privacyModeState = PrivacyModeState.find(widget.id);
       if ((privacyModeState.isEmpty ||
@@ -814,10 +929,6 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
         return const Offstage();
       }
     }));
-    if (!isWebDesktop) {
-      toolbarItems.add(_MobileActionMenu(ffi: widget.ffi));
-    }
-
     toolbarItems.add(Obx(() {
       final privacyModeState = PrivacyModeState.find(widget.id);
       if ((privacyModeState.isEmpty ||
@@ -829,18 +940,9 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
             edge: edge,
             setRemoteState: widget.setRemoteState);
       } else {
-        return Offstage();
+        return const Offstage();
       }
     }));
-
-    toolbarItems
-        .add(_ControlMenu(id: widget.id, ffi: widget.ffi, state: widget.state));
-    toolbarItems.add(_DisplayMenu(
-      id: widget.id,
-      ffi: widget.ffi,
-      state: widget.state,
-      setFullscreen: _setFullscreen,
-    ));
     // Do not show keyboard for camera connection type.
     if (widget.ffi.connType == ConnType.defaultConn) {
       toolbarItems.add(_KeyboardMenu(id: widget.id, ffi: widget.ffi));
@@ -850,13 +952,18 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       toolbarItems.add(_VoiceCallMenu(id: widget.id, ffi: widget.ffi));
     }
     if (!isWeb) toolbarItems.add(_RecordMenu());
-    toolbarItems.add(_CloseMenu(id: widget.id, ffi: widget.ffi));
+    toolbarItems.add(_CloseMenu(
+        id: widget.id,
+        ffi: widget.ffi,
+        margin: const EdgeInsets.symmetric(
+            horizontal: _ToolbarTheme.buttonHMargin,
+            vertical: _ToolbarTheme.buttonVMargin)));
     final toolbarBorderRadius = BorderRadius.all(Radius.circular(4.0));
     // innerAxis: how the toolbar icons themselves flow.
     // outerAxis: how the toolbar block and the handle stack against each other
     // (perpendicular to the dock edge, so the handle hangs off the interior face).
     final innerAxis = isHorizontal ? Axis.horizontal : Axis.vertical;
-    final outerAxis = isHorizontal ? Axis.vertical : Axis.horizontal;
+
     final spacer = isHorizontal
         ? SizedBox(width: _ToolbarTheme.buttonHMargin * 2)
         : SizedBox(height: _ToolbarTheme.buttonHMargin * 2);
@@ -888,18 +995,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
         ),
       ),
     );
-    final handle = _buildDraggableCollapse(context, edge, isHorizontal);
-    // The handle hangs off the interior face of the toolbar (away from the
-    // docked edge), centered along that face by the Flex's default cross-axis
-    // alignment, so the icons themselves sit flush against the docked edge.
-    final children = (edge == _ToolbarEdge.top || edge == _ToolbarEdge.left)
-        ? [toolbarMaterial, handle]
-        : [handle, toolbarMaterial];
-    return Flex(
-      direction: outerAxis,
-      mainAxisSize: MainAxisSize.min,
-      children: children,
-    );
+    return toolbarMaterial;
   }
 
   ThemeData themeData() {
@@ -2974,22 +3070,35 @@ class _RecordMenu extends StatelessWidget {
 class _CloseMenu extends StatelessWidget {
   final String id;
   final FFI ffi;
-  const _CloseMenu({Key? key, required this.id, required this.ffi})
+  final EdgeInsetsGeometry margin;
+  const _CloseMenu(
+      {Key? key,
+      required this.id,
+      required this.ffi,
+      this.margin = EdgeInsets.zero})
       : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return _IconMenuButton(
-      assetName: 'assets/close.svg',
-      tooltip: 'Close',
+    // Same 32px glyph box as the other toolbar SVG buttons; white on red is
+    // legible in both themes (colorScheme.onError may be black).
+    return RemoteToolbarActionButton(
+      child: SvgPicture.asset('assets/close.svg',
+          width: _ToolbarTheme.buttonSize,
+          height: _ToolbarTheme.buttonSize,
+          colorFilter: const ColorFilter.mode(
+              RemoteToolbarActionButton.defaultForeground, BlendMode.srcIn)),
+      tooltip: translate('Hang Up'),
+      backgroundColor: _ToolbarTheme.redColor,
+      hoverColor: _ToolbarTheme.hoverRedColor,
+      foregroundColor: RemoteToolbarActionButton.defaultForeground,
+      margin: margin,
       onPressed: () async {
         if (await showConnEndAuditDialogCloseCanceled(ffi: ffi)) {
           return;
         }
         closeConnection(id: id);
       },
-      color: _ToolbarTheme.redColor,
-      hoverColor: _ToolbarTheme.hoverRedColor,
     );
   }
 }
@@ -3121,6 +3230,16 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
           width: _ToolbarTheme.buttonSize,
           height: _ToolbarTheme.buttonSize,
         );
+    final menuActivity = _RemoteToolbarMenuActivityScope.maybeOf(context);
+    final menuChildren = widget.menuChildrenGetter(this).map((e) {
+      final tracked = _buildPointerTrackWidget(e, widget.ffi);
+      return menuActivity == null
+          ? tracked
+          : _RemoteToolbarMenuActivityScope(
+              activity: menuActivity,
+              child: tracked,
+            );
+    }).toList();
     final button = SizedBox(
         width: widget.width ?? _ToolbarTheme.buttonSize,
         height: _ToolbarTheme.buttonSize,
@@ -3131,6 +3250,8 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
             onHover: (value) => setState(() {
                   hover = value;
                 }),
+            onOpen: menuActivity?.menuOpened,
+            onClose: menuActivity?.menuClosed,
             child: Tooltip(
                 message: translate(widget.tooltip),
                 child: Material(
@@ -3142,10 +3263,7 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
                           color: hover ? widget.hoverColor : widget.color,
                         ),
                         child: icon))),
-            menuChildren: widget
-                .menuChildrenGetter(this)
-                .map((e) => _buildPointerTrackWidget(e, widget.ffi))
-                .toList()));
+            menuChildren: menuChildren));
     return MenuBar(children: [
       button.marginSymmetric(
           horizontal: _ToolbarTheme.buttonHMargin,
@@ -3167,11 +3285,22 @@ class _SubmenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final menuActivity = _RemoteToolbarMenuActivityScope.maybeOf(context);
+    final trackedChildren = menuChildren.map((e) {
+      final tracked = _buildPointerTrackWidget(e, ffi);
+      return menuActivity == null
+          ? tracked
+          : _RemoteToolbarMenuActivityScope(
+              activity: menuActivity,
+              child: tracked,
+            );
+    }).toList();
     return SubmenuButton(
       key: key,
+      onOpen: menuActivity?.menuOpened,
+      onClose: menuActivity?.menuClosed,
       child: child,
-      menuChildren:
-          menuChildren.map((e) => _buildPointerTrackWidget(e, ffi)).toList(),
+      menuChildren: trackedChildren,
       menuStyle: _ToolbarTheme.defaultMenuStyle(context),
     );
   }
@@ -3294,6 +3423,7 @@ class _DraggableShowHide extends StatefulWidget {
   final RxBool dragging;
   final ToolbarState toolbarState;
   final BorderRadius borderRadius;
+  final bool compact;
 
   final Function(bool) setFullscreen;
   final Function() setMinimize;
@@ -3317,6 +3447,7 @@ class _DraggableShowHide extends StatefulWidget {
     required this.setFullscreen,
     required this.setMinimize,
     required this.borderRadius,
+    this.compact = false,
   }) : super(key: key);
 
   @override
@@ -3491,7 +3622,9 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
     );
   }
 
-  Widget _buildDraggable(BuildContext context) {
+  Widget _buildDraggable(BuildContext context,
+      {double iconSize = RemoteToolbarCompactControls.iconSize,
+      EdgeInsetsGeometry margin = EdgeInsets.zero}) {
     return Listener(
       onPointerDown: (event) => _lastPointerDown = event.position,
       child: Draggable(
@@ -3500,10 +3633,16 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
         // floats away from the top while dragging and the toolbar looks
         // unmoored. When multi-edge is on we need 2D drag for snap-to-edge.
         axis: widget.multiEdgeEnabled ? null : Axis.horizontal,
-        child: Icon(
-          widget.isHorizontal ? Icons.drag_indicator : Icons.drag_handle,
-          size: 20,
-          color: MyTheme.color(context).drag_indicator,
+        child: RemoteToolbarActionButton(
+          tooltip: translate('Move Toolbar'),
+          onPressed: () {},
+          backgroundColor: _ToolbarTheme.blueColor,
+          hoverColor: _ToolbarTheme.hoverBlueColor,
+          margin: margin,
+          child: Icon(
+            widget.isHorizontal ? Icons.drag_indicator : Icons.drag_handle,
+            size: iconSize,
+          ),
         ),
         feedback: widget,
         onDragStarted: () {
@@ -3533,31 +3672,95 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
       padding: MaterialStateProperty.all(EdgeInsets.zero),
     );
     final isFullscreen = stateGlobal.fullscreen;
-    const double iconSize = 20;
+    const double iconSize = RemoteToolbarCompactControls.iconSize;
+    // The compact bar spaces its own 32px slots; the expanded handle uses the
+    // same per-button margins as the main toolbar.
+    final EdgeInsetsGeometry handleMargin = widget.compact
+        ? EdgeInsets.zero
+        : _ToolbarTheme.buttonMargin(widget.isHorizontal);
 
     buttonWrapper(VoidCallback? onPressed, Widget child,
-        {Color hoverColor = _ToolbarTheme.blueColor}) {
-      final bgColor = buttonStyle.backgroundColor?.resolve({});
-      return TextButton(
+        {Color hoverColor = _ToolbarTheme.hoverBlueColor}) {
+      return RemoteToolbarActionButton(
+        tooltip: '', // The existing child keeps its state-specific tooltip.
+        backgroundColor: _ToolbarTheme.blueColor,
+        hoverColor: hoverColor,
+        margin: handleMargin,
         onPressed: onPressed,
         child: child,
-        style: buttonStyle.copyWith(
-          backgroundColor: MaterialStateProperty.resolveWith((states) {
-            if (states.contains(MaterialState.hovered)) {
-              return (bgColor ?? hoverColor).withOpacity(0.15);
-            }
-            return bgColor;
-          }),
-        ),
       );
     }
 
+    if (widget.compact) {
+      var expandIcon = Icons.expand_more;
+      switch (widget.edge.value) {
+        case _ToolbarEdge.top:
+          expandIcon = Icons.expand_more;
+          break;
+        case _ToolbarEdge.right:
+          expandIcon = Icons.chevron_left;
+          break;
+        case _ToolbarEdge.bottom:
+          expandIcon = Icons.expand_less;
+          break;
+        case _ToolbarEdge.left:
+          expandIcon = Icons.chevron_right;
+          break;
+      }
+      return TextButtonTheme(
+        data: TextButtonThemeData(style: buttonStyle),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: _ToolbarTheme.barBackground(context),
+            border: Border.all(
+              color: _ToolbarTheme.borderColor(context),
+              width: 1,
+            ),
+            borderRadius: widget.borderRadius,
+          ),
+          child: RemoteToolbarCompactControls(
+            isHorizontal: widget.isHorizontal,
+            moveHandle: Tooltip(
+              message: translate('Move Toolbar'),
+              child: _buildDraggable(
+                context,
+                iconSize: RemoteToolbarCompactControls.iconSize,
+              ),
+            ),
+            fullscreenButton: Obx(() => buttonWrapper(
+                  () => widget.setFullscreen(!isFullscreen.value),
+                  Tooltip(
+                    message: translate(
+                        isFullscreen.isTrue ? 'Exit Fullscreen' : 'Fullscreen'),
+                    child: Icon(
+                      isFullscreen.isTrue
+                          ? Icons.fullscreen_exit
+                          : Icons.fullscreen,
+                      size: RemoteToolbarCompactControls.iconSize,
+                    ),
+                  ),
+                )),
+            expandButton: buttonWrapper(
+              () => widget.toolbarState.switchCollapse(widget.sessionId),
+              Tooltip(
+                message: translate('Expand Toolbar'),
+                child: Icon(
+                  expandIcon,
+                  size: RemoteToolbarCompactControls.iconSize,
+                ),
+              ),
+            ),
+            hangUpButton: _CloseMenu(id: widget.id, ffi: widget.ffi),
+          ),
+        ),
+      );
+    }
     final axis = widget.isHorizontal ? Axis.horizontal : Axis.vertical;
     final child = Flex(
       direction: axis,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _buildDraggable(context),
+        _buildDraggable(context, margin: handleMargin),
         Obx(() => collapse.isTrue
             ? _MinimizedMonitorSwitchButton(id: widget.id, ffi: widget.ffi)
             : const Offstage()),
@@ -3594,56 +3797,29 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
           () => setState(() {
             widget.toolbarState.switchCollapse(widget.sessionId);
           }),
-          Obx((() => Tooltip(
-                message: translate(
-                    collapse.isFalse ? 'Hide Toolbar' : 'Show Toolbar'),
-                child: Icon(
-                  _toolbarCollapseIcon(widget.edge.value, collapse.isTrue),
-                  size: iconSize,
-                ),
-              ))),
+          Tooltip(
+            message: translate('Minimize Toolbar'),
+            child: Icon(
+              _toolbarCollapseIcon(widget.edge.value, false),
+              size: iconSize,
+            ),
+          ),
         ),
-        if (isWebDesktop)
-          Obx(() {
-            if (collapse.isFalse) {
-              return Offstage();
-            } else {
-              return buttonWrapper(
-                () => closeConnection(id: widget.id),
-                Tooltip(
-                  message: translate('Close'),
-                  child: Icon(
-                    Icons.close,
-                    size: iconSize,
-                    color: _ToolbarTheme.redColor,
-                  ),
-                ),
-                hoverColor: _ToolbarTheme.redColor,
-              ).paddingOnly(left: iconSize / 2);
-            }
-          })
       ],
     );
     return TextButtonTheme(
       data: TextButtonThemeData(style: buttonStyle),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context)
-              .menuBarTheme
-              .style
-              ?.backgroundColor
-              ?.resolve(MaterialState.values.toSet()),
-          border: Border.all(
-            color: _ToolbarTheme.borderColor(context),
-            width: 1,
-          ),
-          borderRadius: widget.borderRadius,
-        ),
-        child: SizedBox(
-          height: widget.isHorizontal ? 20 : null,
-          width: widget.isHorizontal ? null : 20,
-          child: child,
-        ),
+      // No own background or border: the expanded handle is part of the
+      // continuous toolbar.
+      child: SizedBox(
+        // 32px buttons + 6px margins on each side, like the main toolbar.
+        height: widget.isHorizontal
+            ? RemoteToolbarCompactControls.crossAxisExtent
+            : null,
+        width: widget.isHorizontal
+            ? null
+            : RemoteToolbarCompactControls.crossAxisExtent,
+        child: child,
       ),
     );
   }

@@ -24,6 +24,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/login.dart';
+import 'package:flutter_hbb/desktop/komi_branding.dart';
 
 const double _kTabWidth = 200;
 const double _kTabHeight = 42;
@@ -72,8 +73,10 @@ class DesktopSettingPage extends StatefulWidget {
         bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) != 'Y')
       SettingsTabKey.network,
     if (!bind.isIncomingOnly()) SettingsTabKey.display,
-    if (!bind.isDisableAccount()) SettingsTabKey.account,
+    // KomiRemote: Account tab hidden from navigation; its widgets stay in the code base.
+    if (!bind.isDisableAccount() && !isKomiRemote) SettingsTabKey.account,
     if (isWindows &&
+        !isKomiRemote &&
         !bind.isDisableSettings() &&
         bind.mainGetBuildinOption(key: kOptionHideRemotePrinterSetting) != 'Y')
       SettingsTabKey.printer,
@@ -483,7 +486,10 @@ class _GeneralState extends State<_General> {
     final incomingOnly = bind.isIncomingOnly();
     final outgoingOnly = bind.isOutgoingOnly();
     final showAutoUpdate = (isWindows && bind.mainIsInstalled()) ||
-    (isMacOS && bind.mainIsInstalled() && bind.mainIsInstalledDaemon(prompt: false) && !bind.isCustomClient());
+        (isMacOS &&
+            bind.mainIsInstalled() &&
+            bind.mainIsInstalledDaemon(prompt: false) &&
+            !bind.isCustomClient());
     final children = <Widget>[
       if (!isWeb && !incomingOnly)
         _OptionCheckBox(context, 'Confirm before closing multiple tabs',
@@ -614,7 +620,7 @@ class _GeneralState extends State<_General> {
       ));
     }
 
-    if (!bind.isDisableAccount()) {
+    if (kKomiNoteAtConnEndEnabled && !bind.isDisableAccount()) {
       children.add(_OptionCheckBox(
         context,
         'note-at-conn-end-tip',
@@ -999,7 +1005,10 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 password(context),
                 _Card(title: '2FA', children: [tfa()]),
                 if (!isChangeIdDisabled())
-                  _Card(title: 'ID', children: [changeId()]),
+                  _Card(
+                    title: isKomiRemote ? 'Nom de connexion personnalisé' : 'ID',
+                    children: [changeId()],
+                  ),
                 more(context),
               ]),
             ),
@@ -1130,7 +1139,9 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
     return ChangeNotifierProvider.value(
         value: gFFI.serverModel,
         child: Consumer<ServerModel>(builder: ((context, model, child) {
-          return _Button('Change ID', changeIdDialog,
+          return _Button(
+              isKomiRemote ? 'Modifier le nom' : 'Change ID',
+              changeIdDialog,
               enabled: !locked && model.connectStatus > 0);
         })));
   }
@@ -1188,7 +1199,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
             _OptionCheckBox(
                 context, 'Enable keyboard/mouse', kOptionEnableKeyboard,
                 enabled: enabled, fakeValue: fakeValue),
-            if (isWindows)
+            if (isWindows && !isKomiRemote)
               _OptionCheckBox(
                   context, 'Enable remote printer', kOptionEnableRemotePrinter,
                   enabled: enabled, fakeValue: fakeValue),
@@ -1340,16 +1351,22 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                 : null,
           ).marginOnly(left: _kContentHSubMargin - 5);
 
-          final modeKeys = <String>[
-            'password',
-            'click',
-            defaultOptionApproveMode
-          ];
-          final modeValues = [
-            translate('Accept sessions via password'),
-            translate('Accept sessions via click'),
-            translate('Accept sessions via both'),
-          ];
+          // KomiRemote: same three native engine modes (ApproveMode), honest labels,
+          // manual approval listed first because it is the default.
+          final modeKeys = isKomiRemote
+              ? <String>['click', 'password', defaultOptionApproveMode]
+              : <String>['password', 'click', defaultOptionApproveMode];
+          final modeValues = isKomiRemote
+              ? [
+                  translate('komi_approve_click'),
+                  translate('komi_approve_password'),
+                  translate('komi_approve_both'),
+                ]
+              : [
+                  translate('Accept sessions via password'),
+                  translate('Accept sessions via click'),
+                  translate('Accept sessions via both'),
+                ];
           var modeInitialKey = model.approveMode;
           if (!modeKeys.contains(modeInitialKey)) {
             modeInitialKey = defaultOptionApproveMode;
@@ -2513,7 +2530,9 @@ class _AboutState extends State<_About> {
       final license = await bind.mainGetLicense();
       final version = await bind.mainGetVersion();
       final buildDate = await bind.mainGetBuildDate();
-      final fingerprint = await bind.mainGetFingerprint();
+      final fingerprint = isKomiRemote
+          ? await buildExecutableSha256()
+          : await bind.mainGetFingerprint();
       final myId = await bind.mainGetMyId();
       return {
         'license': license,
@@ -2530,78 +2549,259 @@ class _AboutState extends State<_About> {
       final myId = data['myId'].toString();
       const linkStyle = TextStyle(decoration: TextDecoration.underline);
       final scrollController = ScrollController();
+      if (isKomiRemote) {
+        return SingleChildScrollView(
+          controller: scrollController,
+          child: _Card(title: 'À propos de KomiRemote', title_suffix: [
+            _komiAboutLogo()
+          ], children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: _komiAboutInfo(linkStyle, buildDate, fingerprint),
+            ).marginOnly(left: _kContentHMargin)
+          ]),
+        );
+      }
       return SingleChildScrollView(
         controller: scrollController,
-        child: _Card(title: translate('About RustDesk'), children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: _Card(
+            title: isKomiRemote
+                ? 'À propos de KomiRemote'
+                : translate('About RustDesk'),
             children: [
-              const SizedBox(
-                height: 8.0,
-              ),
-              SelectionArea(
-                  child: Text('${translate('Version')}: $version')
-                      .marginSymmetric(vertical: 4.0)),
-              SelectionArea(
-                  child: Text('${translate('Build Date')}: $buildDate')
-                      .marginSymmetric(vertical: 4.0)),
-              if (!isWeb)
-                SelectionArea(
-                    child: Text('${translate('Fingerprint')}: $fingerprint')
-                        .marginSymmetric(vertical: 4.0)),
-              SelectionArea(
-                  child: Text('${translate('ID')}: $myId')
-                      .marginSymmetric(vertical: 4.0)),
-              InkWell(
-                  onTap: () {
-                    launchUrlString('https://rustdesk.com/privacy.html');
-                  },
-                  child: Text(
-                    translate('Privacy Statement'),
-                    style: linkStyle,
-                  ).marginSymmetric(vertical: 4.0)),
-              InkWell(
-                  onTap: () {
-                    launchUrlString('https://rustdesk.com');
-                  },
-                  child: Text(
-                    translate('Website'),
-                    style: linkStyle,
-                  ).marginSymmetric(vertical: 4.0)),
-              Container(
-                decoration: const BoxDecoration(color: Color(0xFF2c8cff)),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
-                child: SelectionArea(
-                    child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Tech Pte. Ltd.\n$license',
-                            style: const TextStyle(color: Colors.white),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(
+                    height: 8.0,
+                  ),
+                  SelectionArea(
+                      child: Text('${translate('Version')}: $version')
+                          .marginSymmetric(vertical: 4.0)),
+                  SelectionArea(
+                      child: Text('${translate('Build Date')}: $buildDate')
+                          .marginSymmetric(vertical: 4.0)),
+                  if (!isWeb)
+                    SelectionArea(
+                        child: Text('${translate('Fingerprint')}: $fingerprint')
+                            .marginSymmetric(vertical: 4.0)),
+                  SelectionArea(
+                      child: Text('${translate('ID')}: $myId')
+                          .marginSymmetric(vertical: 4.0)),
+                  if (!isKomiRemote)
+                    InkWell(
+                        onTap: () {
+                          launchUrlString('https://rustdesk.com/privacy.html');
+                        },
+                        child: Text(
+                          translate('Privacy Statement'),
+                          style: linkStyle,
+                        ).marginSymmetric(vertical: 4.0)),
+                  if (!isKomiRemote)
+                    InkWell(
+                        onTap: () {
+                          launchUrlString('https://rustdesk.com');
+                        },
+                        child: Text(
+                          translate('Website'),
+                          style: linkStyle,
+                        ).marginSymmetric(vertical: 4.0)),
+                  Container(
+                    decoration: const BoxDecoration(color: Color(0xFF2c8cff)),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 24, horizontal: 8),
+                    child: SelectionArea(
+                        child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Copyright © ${DateTime.now().toString().substring(0, 4)} Purslane Tech Pte. Ltd.\n$license',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              Text(
+                                translate('Slogan_tip'),
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white),
+                              )
+                            ],
                           ),
-                          Text(
-                            translate('Slogan_tip'),
-                            style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white),
-                          )
-                        ],
-                      ),
-                    ),
-                  ],
-                )),
-              ).marginSymmetric(vertical: 4.0)
-            ],
-          ).marginOnly(left: _kContentHMargin)
-        ]),
+                        ),
+                      ],
+                    )),
+                  ).marginSymmetric(vertical: 4.0)
+                ],
+              ).marginOnly(left: _kContentHMargin)
+            ]),
       );
     });
   }
 }
+
+const String kKomiLicenceUrl =
+    'https://github.com/komjordan/KomiRemote/blob/main/LICENCE';
+const String kKomiSourceUrl =
+    'https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71';
+const String kKomiLegalNoticesUrl =
+    'https://github.com/komjordan/KomiRemote/blob/v1.5.1-komi.71/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md';
+
+// Compact KomiRemote product information. Full modification, attribution and
+// no-warranty notices remain in LICENCE and LEGAL-NOTICES-KOMIREMOTE.md.
+List<Widget> _komiAboutInfo(
+    TextStyle linkStyle, String buildDate, String fingerprint) {
+  Widget line(String text) =>
+      SelectionArea(child: Text(text).marginSymmetric(vertical: 3.0));
+  Widget link(String label, String text, String url) => InkWell(
+      onTap: () => launchUrlString(url),
+      child: Text('$label : $text', style: linkStyle)
+          .marginSymmetric(vertical: 3.0));
+  return [
+    line('Description : Bureau à distance'),
+    Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      final accent = isDark ? const Color(0xFF4FBB85) : const Color(0xFF2E8B5E);
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 8, bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF171F1C) : MyTheme.grayBg,
+          border: Border.all(color: const Color(0xFF4FBB85), width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.language_outlined, color: accent, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Éditeur : Axel KAMGAING KOM',
+                    style: TextStyle(
+                        color: isDark
+                            ? const Color(0xFFE8ECEA)
+                            : const Color(0xFF171F1C),
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => launchUrlString('https://komjordan.fr'),
+                    child: Text(
+                      'Portfolio : https://komjordan.fr',
+                      style: TextStyle(
+                          color: accent,
+                          decoration: TextDecoration.underline),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }),
+    // The licence is named once; its name opens the LICENCE file.
+    Builder(builder: (context) {
+      final style = DefaultTextStyle.of(context).style;
+      return Text.rich(
+        TextSpan(
+          style: style,
+          children: [
+            const TextSpan(text: 'Licence : '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: InkWell(
+                onTap: () => launchUrlString(kKomiLicenceUrl),
+                child: Text('GNU AGPL-3.0', style: linkStyle),
+              ),
+            ),
+            const TextSpan(text: ', sans aucune garantie'),
+          ],
+        ),
+      ).marginSymmetric(vertical: 3.0);
+    }),
+    line('Version modifiée de RustDesk, 2026.'),
+    link('Code source', kKomiSourceUrl, kKomiSourceUrl),
+    line('Date de compilation : $buildDate'),
+    line('Version : 1.5.1'),
+    line('Empreinte numérique :'),
+    Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 3, bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF171F1C) : MyTheme.grayBg,
+          border: Border.all(color: const Color(0xFF4FBB85), width: 1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: SelectableText(
+          fingerprint,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: isDark ? const Color(0xFFE8ECEA) : const Color(0xFF171F1C),
+          ),
+        ),
+      );
+    }),
+    const SizedBox(height: 18),
+    Builder(builder: (context) {
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF171F1C) : MyTheme.grayBg,
+          border: Border.all(color: const Color(0xFF4FBB85), width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Text(
+              'Copyright © 2026 Purslane Tech Pte. Ltd.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: isDark
+                      ? const Color(0xFFE8ECEA)
+                      : const Color(0xFF171F1C)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Fait avec cœur dans ce monde chaotique !',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: isDark
+                      ? const Color(0xFF4FBB85)
+                      : const Color(0xFF2E8B5E)),
+            ),
+          ],
+        ),
+      );
+    }),
+    link('Mentions légales', 'LEGAL-NOTICES-KOMIREMOTE.md', kKomiLegalNoticesUrl),
+    const SizedBox(height: 8),
+  ];
+}
+
+Widget _komiAboutLogo() => SizedBox(
+      width: 150,
+      height: 38,
+      child: FittedBox(
+        fit: BoxFit.contain,
+        alignment: Alignment.centerRight,
+        child: loadLogo(),
+      ),
+    );
 
 //#endregion
 

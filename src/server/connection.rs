@@ -1940,7 +1940,13 @@ impl Connection {
 
         #[cfg(not(target_os = "android"))]
         {
-            pi.hostname = crate::whoami_hostname();
+            // KomiRemote keeps the numeric RustDesk ID unchanged. The optional
+            // local name travels through the existing hostname field only.
+            pi.hostname = if crate::get_app_name() == "KomiRemote" {
+                crate::komi_device_name::advertised_device_name(&crate::whoami_hostname())
+            } else {
+                crate::whoami_hostname()
+            };
             pi.platform = hbb_common::whoami::platform().to_string();
         }
         #[cfg(target_os = "android")]
@@ -3164,6 +3170,8 @@ impl Connection {
                         }
                         #[cfg(target_os = "macos")]
                         self.retina.on_mouse_event(&mut me, self.display_idx);
+                        // KomiRemote: other viewers see this controller's name by the cursor.
+                        note_peer_cursor_controller(self.inner.id(), &self.lr.my_name);
                         self.input_mouse(
                             me,
                             self.inner.id(),
@@ -6985,6 +6993,8 @@ mod raii {
             // Clear per-connection state to avoid stale behavior if conn ids are reused.
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             clear_relative_mouse_active(self.0);
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            clear_peer_cursor_controller(self.0);
             AUTHED_CONNS.lock().unwrap().retain(|c| c.conn_id != self.0);
             let remote_count = AUTHED_CONNS
                 .lock()

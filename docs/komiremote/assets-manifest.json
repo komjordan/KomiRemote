@@ -1,0 +1,81 @@
+[
+  {
+    "target": "res/32x32.png",
+    "source": "rustdesk/32x32.png",
+    "sha256": "ad6e06535a8a7b2989a45ccfe7d2b23a9c30bca26f7e22bba65c92205850bde8"
+  },
+  {
+    "target": "res/64x64.png",
+    "source": "rustdesk/64x64.png",
+    "sha256": "5b8bd8632b7687d6a37954e43f6eb61578d605fecf177638b081edaa428cb558"
+  },
+  {
+    "target": "res/128x128.png",
+    "source": "rustdesk/128x128.png",
+    "sha256": "b48071a5a0029ebea570524a8d12a39e453e1adc85eb7a2372e20360ca3fa581"
+  },
+  {
+    "target": "res/128x128@2x.png",
+    "source": "rustdesk/128x128@2x.png",
+    "sha256": "a09f5c3642f3942b80badda5398419e88cd6189768a870360d0f384fe89613ab"
+  },
+  {
+    "target": "res/icon.png",
+    "source": "rustdesk/icon.png",
+    "sha256": "664ead58f32cc60930ea2c6d70d1e5f7fc0c20ef97c246f3d36665df717bee77"
+  },
+  {
+    "target": "res/icon.ico",
+    "source": "rustdesk/icon.ico",
+    "sha256": "45b03642fb2e22a156542ef2cbac075eeaf351d6d96f1e1f9bc581abe672e1bf",
+    "derived": "v16: regenerated from svg/komiremote-icon.svg (48-256) and svg/komiremote-icon-small-{16,24,32}.svg with a tight viewBox (empty margins cropped, aspect ratio kept, centred) for a larger taskbar icon"
+  },
+  {
+    "target": "res/tray-icon.ico",
+    "source": "rustdesk/tray-icon.ico",
+    "sha256": "45b03642fb2e22a156542ef2cbac075eeaf351d6d96f1e1f9bc581abe672e1bf",
+    "derived": "v16: regenerated from svg/komiremote-icon.svg (48-256) and svg/komiremote-icon-small-{16,24,32}.svg with a tight viewBox (empty margins cropped, aspect ratio kept, centred) for a larger taskbar icon"
+  },
+  {
+    "target": "res/scalable.svg",
+    "source": "rustdesk/scalable.svg",
+    "sha256": "645fc8541f9105c86754c96cccffe28d0e73b44b45d06b6380c79f5b59a56235"
+  },
+  {
+    "target": "flutter/windows/runner/resources/app_icon.ico",
+    "source": "ico/komiremote.ico",
+    "sha256": "45b03642fb2e22a156542ef2cbac075eeaf351d6d96f1e1f9bc581abe672e1bf",
+    "derived": "v16: regenerated from svg/komiremote-icon.svg (48-256) and svg/komiremote-icon-small-{16,24,32}.svg with a tight viewBox (empty margins cropped, aspect ratio kept, centred) for a larger taskbar icon"
+  },
+  {
+    "target": "flutter/assets/icon.png",
+    "source": "png/komiremote-icon-32.png",
+    "sha256": "ad6e06535a8a7b2989a45ccfe7d2b23a9c30bca26f7e22bba65c92205850bde8"
+  },
+  {
+    "target": "flutter/assets/icon.ico",
+    "source": "ico/komiremote.ico",
+    "sha256": "45b03642fb2e22a156542ef2cbac075eeaf351d6d96f1e1f9bc581abe672e1bf",
+    "derived": "v16: regenerated from svg/komiremote-icon.svg (48-256) and svg/komiremote-icon-small-{16,24,32}.svg with a tight viewBox (empty margins cropped, aspect ratio kept, centred) for a larger taskbar icon"
+  },
+  {
+    "target": "flutter/assets/icon.svg",
+    "source": "svg/komiremote-icon.svg",
+    "sha256": "645fc8541f9105c86754c96cccffe28d0e73b44b45d06b6380c79f5b59a56235"
+  },
+  {
+    "target": "flutter/assets/logo_dark.png",
+    "source": "png/komiremote-wordmark-dark-bg-1600.png",
+    "sha256": "59cad734b83b4bd6ecbeb34537e599683ea51b51bdb8c2636ad2841693f2d668"
+  },
+  {
+    "target": "flutter/assets/logo_light.png",
+    "source": "png/komiremote-wordmark-light-bg-1600.png",
+    "sha256": "80b2ca1ed19e82233011d8368a0b82d75d8fdf45dfeefd573f778cbb2af1ca1b"
+  },
+  {
+    "target": "flutter/assets/logo.png",
+    "source": "png/komiremote-wordmark-dark-bg-1600.png",
+    "sha256": "59cad734b83b4bd6ecbeb34537e599683ea51b51bdb8c2636ad2841693f2d668"
+  }
+]

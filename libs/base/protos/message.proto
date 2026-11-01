@@ -323,6 +323,9 @@ message CursorData {
 message CursorPosition {
   sint32 x = 1;
   sint32 y = 2;
+  // KomiRemote: name of the viewer currently moving this cursor, empty when
+  // none (local user, or no recent remote input). Older peers ignore it.
+  string controller_name = 3;
 }
 
 message Hash {

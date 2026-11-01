@@ -14,8 +14,50 @@ lazy_static::lazy_static! {
     static ref CURRENT_2FA: Mutex<Option<(TOTPInfo, TOTP)>> = Mutex::new(None);
 }
 
-const ISSUER: &str = "RustDesk";
-const TAG_LOGIN: &str = "Connection";
+fn totp_issuer(app_name: &str) -> &'static str {
+    if app_name == "KomiRemote" {
+        "KomiRemote Connection"
+    } else {
+        "RustDesk Connection"
+    }
+}
+
+#[cfg(test)]
+mod komi_totp_tests {
+    use super::*;
+
+    #[test]
+    fn issuer_is_komi_only_and_not_an_arbitrary_app_name() {
+        assert_eq!(totp_issuer("KomiRemote"), "KomiRemote Connection");
+        assert_eq!(totp_issuer("RustDesk"), "RustDesk Connection");
+        assert_eq!(totp_issuer("Other"), "RustDesk Connection");
+    }
+
+    #[test]
+    fn legacy_schema_and_codes_are_issuer_independent() {
+        // Public RFC 6238 test vector only, never a user's stored secret.
+        let info = TOTPInfo {
+            name: "fixture-id".to_owned(),
+            secret: b"12345678901234567890".to_vec(),
+            digits: 8,
+            created_at: 1,
+        };
+        let fixture = serde_json::to_string(&info).unwrap();
+        let restored: TOTPInfo = serde_json::from_str(&fixture).unwrap();
+        assert!(restored.secret == info.secret);
+        assert!(restored.name == info.name && restored.created_at == info.created_at);
+        let current = restored.new_totp().unwrap();
+        let legacy = TOTP::new(
+            Algorithm::SHA1, info.digits, 1, 30, info.secret.clone(),
+            Some("RustDesk Connection".to_owned()), info.name.clone(),
+        ).unwrap();
+        for timestamp in [59, 1111111109, 1234567890, 2000000000] {
+            assert!(current.generate(timestamp) == legacy.generate(timestamp));
+        }
+        assert!(current.generate(59) == "94287082");
+        assert!(restored.secret == info.secret);
+    }
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TOTPInfo {
@@ -33,7 +75,7 @@ impl TOTPInfo {
             1,
             30,
             self.secret.clone(),
-            Some(format!("{} {}", ISSUER, TAG_LOGIN)),
+            Some(totp_issuer(&crate::get_app_name()).to_owned()),
             self.name.clone(),
         )?;
         Ok(totp)

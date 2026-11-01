@@ -1124,6 +1124,11 @@ pub fn get_custom_rendezvous_server(custom: String) -> String {
 
 #[inline]
 pub fn get_api_server(api: String, custom: String) -> String {
+    // KomiRemote runs on open-source hbbs/hbbr only: there is no API server on :21114.
+    // An empty API server makes heartbeat/sysinfo, audit, record-upload and account calls skip.
+    if config::APP_NAME.read().unwrap().as_str() == "KomiRemote" {
+        return "".to_owned();
+    }
     if Config::no_register_device() {
         return "".to_owned();
     }
@@ -2357,7 +2362,24 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
+/// Install public fork defaults before lazy config/path access in every Windows entry.
+/// This deliberately does not touch persisted options or the signed custom.txt verifier.
+pub(crate) fn initialize_komi_defaults() {
+    #[cfg(windows)]
+    {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        crate::komi_config::initialize(
+            &INIT,
+            &config::APP_NAME,
+            &config::DEFAULT_SETTINGS,
+            &config::DEFAULT_LOCAL_SETTINGS,
+            &config::DEFAULT_DISPLAY_SETTINGS,
+        );
+    }
+}
+
 pub fn load_custom_client() {
+    initialize_komi_defaults();
     #[cfg(debug_assertions)]
     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
         read_custom_client(data.trim());

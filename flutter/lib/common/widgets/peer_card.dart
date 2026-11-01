@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 
 import '../../common.dart';
 import '../../common/formatter/id_formatter.dart';
+import '../../desktop/komi_device_name.dart';
 import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
@@ -132,9 +133,16 @@ class _PeerCardState extends State<_PeerCard>
   }
 
   makeChild(bool isPortrait, Peer peer) {
-    final name = hideUsernameOnCard == true
+    final nativeDetail = hideUsernameOnCard == true
         ? peer.hostname
         : '${peer.username}${peer.username.isNotEmpty && peer.hostname.isNotEmpty ? '@' : ''}${peer.hostname}';
+    final isKomiRecent =
+        appName == 'KomiRemote' && widget.tab == PeerTabIndex.recent;
+    final primaryName = isKomiRecent
+        ? komiRecentPrimaryName(
+            alias: peer.alias, hostname: peer.hostname, id: peer.id)
+        : (peer.alias.isEmpty ? formatID(peer.id) : peer.alias);
+    final detailName = isKomiRecent ? formatID(peer.id) : nativeDetail;
     final greyStyle = TextStyle(
         fontSize: 11,
         color: Theme.of(context).textTheme.titleLarge?.color?.withOpacity(0.6));
@@ -186,7 +194,7 @@ class _PeerCardState extends State<_PeerCard>
                         getOnline(isPortrait ? 4 : 8, peer.online),
                         Expanded(
                             child: Text(
-                          peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
+                          primaryName,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         )),
@@ -195,12 +203,12 @@ class _PeerCardState extends State<_PeerCard>
                         children: [
                           Flexible(
                             child: Tooltip(
-                              message: name,
+                              message: detailName,
                               waitDuration: const Duration(seconds: 1),
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  name,
+                                  detailName,
                                   style: isPortrait ? null : greyStyle,
                                   textAlign: TextAlign.start,
                                   overflow: TextOverflow.ellipsis,
@@ -282,9 +290,16 @@ class _PeerCardState extends State<_PeerCard>
       BuildContext context, Peer peer, Rx<BoxDecoration?> deco) {
     hideUsernameOnCard ??=
         bind.mainGetBuildinOption(key: kHideUsernameOnCard) == 'Y';
-    final name = hideUsernameOnCard == true
+    final nativeDetail = hideUsernameOnCard == true
         ? peer.hostname
         : '${peer.username}${peer.username.isNotEmpty && peer.hostname.isNotEmpty ? '@' : ''}${peer.hostname}';
+    final isKomiRecent =
+        appName == 'KomiRemote' && widget.tab == PeerTabIndex.recent;
+    final primaryName = isKomiRecent
+        ? komiRecentPrimaryName(
+            alias: peer.alias, hostname: peer.hostname, id: peer.id)
+        : (peer.alias.isEmpty ? formatID(peer.id) : peer.alias);
+    final detailName = isKomiRecent ? formatID(peer.id) : nativeDetail;
     final child = Card(
       color: Colors.transparent,
       elevation: 0,
@@ -319,10 +334,12 @@ class _PeerCardState extends State<_PeerCard>
                                 children: [
                                   Expanded(
                                     child: Tooltip(
-                                      message: name,
+                                      message: isKomiRecent
+                                          ? primaryName
+                                          : detailName,
                                       waitDuration: const Duration(seconds: 1),
                                       child: Text(
-                                        name,
+                                        isKomiRecent ? primaryName : detailName,
                                         style: const TextStyle(
                                             color: Colors.white70,
                                             fontSize: 12),
@@ -368,7 +385,7 @@ class _PeerCardState extends State<_PeerCard>
                         getOnline(8, peer.online),
                         Expanded(
                             child: Text(
-                          peer.alias.isEmpty ? formatID(peer.id) : peer.alias,
+                          isKomiRecent ? formatID(peer.id) : primaryName,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleSmall,
                         )),

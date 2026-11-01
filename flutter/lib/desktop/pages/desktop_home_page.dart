@@ -9,6 +9,11 @@ import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/animated_rotation_widget.dart';
 import 'package:flutter_hbb/common/widgets/custom_password.dart';
 import 'package:flutter_hbb/consts.dart';
+import 'package:flutter_hbb/desktop/komi_branding.dart';
+import 'package:flutter_hbb/desktop/komi_device_name.dart';
+import 'package:flutter_hbb/common/formatter/id_formatter.dart' show trimID;
+import 'package:flutter_hbb/desktop/komi_public_names.dart';
+import 'package:flutter_hbb/desktop/komi_update.dart';
 import 'package:flutter_hbb/desktop/pages/connection_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
@@ -33,6 +38,14 @@ class DesktopHomePage extends StatefulWidget {
 }
 
 const borderColor = Color(0xFF2F65BA);
+const double _kKomiIdentityLeftMargin = 20.0;
+const double _kKomiIdentityRightMargin = 16.0;
+const double _kKomiIdentityInset = 7.0;
+const double _kKomiIdentityAccentWidth = 2.0;
+const double _kKomiIdentityAccentHeight = 52.0;
+const double _kKomiIdentityBlockHeight = 57.0;
+const double _kKomiIdentityVerticalGap = 6.0;
+const double _kKomiIdentityActionSize = 30.0;
 
 class _DesktopHomePageState extends State<DesktopHomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
@@ -47,8 +60,89 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   var watchIsProcessTrust = false;
   var watchIsInputMonitoring = false;
   var watchIsCanRecordAudio = false;
+  // Mirror the confirmed public connection name into the local option the
+  // client presents to peers (connection prompts and cursor name tags).
+  // Called only with authoritative values: a registry answer, or a name
+  // reserved/renamed/released in Settings. A failed query changes nothing.
+  void _syncSessionDisplayName(String? confirmed) {
+    final value =
+        confirmed != null && validKomiAlias(confirmed) ? confirmed : '';
+    if (bind.mainGetLocalOption(key: kKomiDisplayNameOption) == value) return;
+    bind.mainSetLocalOption(key: kKomiDisplayNameOption, value: value);
+  }
+
+  void _onPublicNameChanged() {
+    _syncSessionDisplayName(komiActivePublicName.value);
+    if (mounted) {
+      final rawId = trimID(gFFI.serverModel.serverId.text);
+      final value = komiActivePublicName.value;
+      if (_confirmedPublicName == value && _confirmedId == rawId) return;
+      setState(() {
+        _confirmedPublicName = value;
+        _confirmedId = rawId;
+      });
+    }
+  }
+
   Timer? _updateTimer;
   bool isCardClosed = false;
+  String? _confirmedPublicName;
+  String? _confirmedId;
+  bool _nameStatusBusy = false;
+  DateTime? _lastNameStatus;
+  String? _nameStatusResolvedFor;
+
+  Future<void> _refreshNameStatus() async {
+    final management = KomiNameManagement.configured();
+    final id = trimID(gFFI.serverModel.serverId.text);
+    if (_nameStatusBusy) return;
+    if (management == null || !validKomiId(id)) {
+      if (mounted && _confirmedPublicName != null) {
+        setState(() {
+          _confirmedPublicName = null;
+          _confirmedId = null;
+        });
+        if (komiActivePublicName.value != null) {
+          komiActivePublicName.value = null;
+        }
+      }
+      return;
+    }
+    // Static display: query the registry once per ID. Later changes arrive
+    // only through komiActivePublicName when a name is applied or released
+    // in Settings. A failed query is retried after 10 s.
+    if (_nameStatusResolvedFor == id) return;
+    final now = DateTime.now();
+    if (_lastNameStatus != null &&
+        now.difference(_lastNameStatus!) < const Duration(seconds: 10)) return;
+    _lastNameStatus = now;
+    _nameStatusBusy = true;
+    String? confirmed;
+    var resolved = false;
+    try {
+      final status = await management.status(id);
+      confirmed = confirmedKomiStatus(status, management.registry.namespace);
+      resolved = true;
+    } on PublicNameException {
+      // Keep the current display; retry later.
+    } finally {
+      _nameStatusBusy = false;
+    }
+    if (!resolved) return;
+    if (mounted && trimID(gFFI.serverModel.serverId.text) == id) {
+      _syncSessionDisplayName(confirmed);
+      _nameStatusResolvedFor = id;
+      if (_confirmedId != id || _confirmedPublicName != confirmed) {
+        setState(() {
+          _confirmedId = id;
+          _confirmedPublicName = confirmed;
+        });
+      }
+      if (komiActivePublicName.value != confirmed) {
+        komiActivePublicName.value = confirmed;
+      }
+    }
+  }
 
   final RxBool _editHover = false.obs;
   final RxBool _block = false.obs;
@@ -60,14 +154,15 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     super.build(context);
     final isIncomingOnly = bind.isIncomingOnly();
     return _buildBlock(
-        child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        buildLeftPane(context),
-        if (!isIncomingOnly) const VerticalDivider(width: 1),
-        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
-      ],
-    ));
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          buildLeftPane(context),
+          if (!isIncomingOnly) const VerticalDivider(width: 1),
+          if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+        ],
+      ),
+    );
   }
 
   Widget _buildBlock({required Widget child}) {
@@ -78,9 +173,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget buildLeftPane(BuildContext context) {
     final isIncomingOnly = bind.isIncomingOnly();
     final isOutgoingOnly = bind.isOutgoingOnly();
-    final children = <Widget>[
+    final contentChildren = <Widget>[
       if (!isOutgoingOnly) buildPresetPasswordWarning(),
-      if (bind.isCustomClient())
+      // KomiRemote: no "powered by" line on the home screen; legal notices stay in About.
+      if (bind.isCustomClient() && !isKomiRemote)
         Align(
           alignment: Alignment.center,
           child: loadPowered(context),
@@ -92,27 +188,18 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       buildTip(context),
       if (!isOutgoingOnly) buildIDBoard(context),
       if (!isOutgoingOnly) buildPasswordBoard(context),
-      FutureBuilder<Widget>(
-        future: Future.value(
-            Obx(() => buildHelpCards(stateGlobal.updateUrl.value))),
-        builder: (_, data) {
-          if (data.hasData) {
-            if (isIncomingOnly) {
-              if (isInHomePage()) {
-                Future.delayed(Duration(milliseconds: 300), () {
-                  _updateWindowSize();
-                });
-              }
-            }
-            return data.data!;
-          } else {
-            return const Offstage();
-          }
-        },
-      ),
     ];
+    final helpCard = Obx(() {
+      final card = buildHelpCards(stateGlobal.updateUrl.value);
+      if (isIncomingOnly && isInHomePage()) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _updateWindowSize());
+      }
+      return card;
+    });
+    final statusChildren = <Widget>[];
     if (isIncomingOnly) {
-      children.addAll([
+      statusChildren.addAll([
         Divider(),
         OnlineStatusWidget(
           onSvcStatusChanged: () {
@@ -129,21 +216,25 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     return ChangeNotifierProvider.value(
       value: gFFI.serverModel,
       child: Container(
-        width: isIncomingOnly ? 280.0 : 200.0,
+        width: isKomiRemote ? 280.0 : (isIncomingOnly ? 280.0 : 200.0),
         color: Theme.of(context).colorScheme.background,
         child: Stack(
           children: [
-            Column(
-              children: [
-                SingleChildScrollView(
-                  controller: _leftPaneScrollController,
+            LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                controller: _leftPaneScrollController,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     key: _childKey,
-                    children: children,
+                    children: [
+                      Column(children: contentChildren),
+                      Column(children: [helpCard, ...statusChildren]),
+                    ],
                   ),
                 ),
-                Expanded(child: Container())
-              ],
+              ),
             ),
             if (isOutgoingOnly)
               Positioned(
@@ -185,22 +276,163 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     );
   }
 
+  Widget _buildKomiIdentityAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    final hover = false.obs;
+    return Tooltip(
+      message: tooltip,
+      child: Obx(() => SizedBox(
+            width: _kKomiIdentityActionSize,
+            height: _kKomiIdentityActionSize,
+            child: Material(
+              color: hover.value
+                  ? MyTheme.accent.withOpacity(0.14)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(7),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(7),
+                onTap: onTap,
+                onHover: (value) => hover.value = value,
+                child: Center(
+                  child: Icon(icon, size: 18, color: MyTheme.accent),
+                ),
+              ),
+            ),
+          )),
+    );
+  }
+
+  Widget _buildKomiIdentityBlock({
+    required BuildContext context,
+    required String label,
+    required Widget value,
+    required List<Widget> actions,
+    VoidCallback? onDoubleTap,
+    VoidCallback? onTap,
+    String? tapTooltip,
+    EdgeInsets? margin,
+  }) {
+    return Container(
+      height: _kKomiIdentityBlockHeight,
+      margin: margin ??
+          const EdgeInsets.only(
+            left: _kKomiIdentityLeftMargin,
+            right: _kKomiIdentityRightMargin,
+            top: _kKomiIdentityVerticalGap,
+            bottom: _kKomiIdentityVerticalGap,
+          ),
+      child: Row(
+        children: [
+          Container(
+            width: _kKomiIdentityAccentWidth,
+            height: _kKomiIdentityAccentHeight,
+            color: MyTheme.accent,
+          ),
+          const SizedBox(width: _kKomiIdentityInset),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 22,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.color
+                            ?.withOpacity(0.5),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: onTap == null
+                            ? GestureDetector(
+                                onDoubleTap: onDoubleTap,
+                                child: value,
+                              )
+                            : Tooltip(
+                                message: tapTooltip ?? '',
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: onTap,
+                                    child: AbsorbPointer(child: value),
+                                  ),
+                                ),
+                              ),
+                      ),
+                      SizedBox(
+                        width: _kKomiIdentityActionSize * 2,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: actions,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   buildIDBoard(BuildContext context) {
     final model = gFFI.serverModel;
-    return Container(
-      margin: const EdgeInsets.only(left: 20, right: 11),
-      height: 57,
+    if (isKomiRemote) {
+      final idBoard = _buildKomiIdentityBlock(
+        context: context,
+        label: translate('ID'),
+        value: TextFormField(
+          controller: model.serverId,
+          readOnly: true,
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+          style: const TextStyle(fontSize: 22, color: MyTheme.accent),
+        ).workaroundFreezeLinuxMint(),
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: model.serverId.text));
+          showToast('ID copié dans le presse-papiers');
+        },
+        tapTooltip: 'Cliquer pour copier l’ID',
+        actions: [buildPopupMenu(context)],
+      );
+      return Column(children: [idBoard, _buildDeviceNameDisplay(context)]);
+    }
+    final idBoard = Container(
+      margin: const EdgeInsets.only(
+          left: _kKomiIdentityLeftMargin, right: _kKomiIdentityRightMargin),
+      height: _kKomiIdentityBlockHeight,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
           Container(
-            width: 2,
+            width: _kKomiIdentityAccentWidth,
+            height: _kKomiIdentityAccentHeight,
             decoration: const BoxDecoration(color: MyTheme.accent),
-          ).marginOnly(top: 5),
+          ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(left: 7),
+              padding: const EdgeInsets.only(left: _kKomiIdentityInset),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -234,12 +466,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                       child: TextFormField(
                         controller: model.serverId,
                         readOnly: true,
-                        decoration: InputDecoration(
+                        decoration: const InputDecoration(
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.only(top: 10, bottom: 10),
                         ),
                         style: TextStyle(
                           fontSize: 22,
+                          color: isKomiRemote ? const Color(0xFF4FBB85) : null,
                         ),
                       ).workaroundFreezeLinuxMint(),
                     ),
@@ -251,9 +484,84 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ],
       ),
     );
+    return idBoard;
+  }
+
+  Widget _buildDeviceNameDisplay(BuildContext context) {
+    final rawId = trimID(gFFI.serverModel.serverId.text);
+    final activeName = (_confirmedId == rawId && _confirmedPublicName != null)
+        ? _confirmedPublicName!
+        : (komiActivePublicName.value ?? null);
+    final deviceName = activeName ?? komiAutomaticDeviceName(Platform.localHostname);
+    const customizationHint =
+        'Pour modifier ce nom, allez dans Paramètres > Sécurité > Nom de connexion personnalisé.';
+    return _buildKomiIdentityBlock(
+      context: context,
+      label: translate('komi_home_device_name'),
+      value: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          deviceName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: activeName != null
+              ? const TextStyle(fontSize: 22, color: MyTheme.accent)
+              : Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontSize: 22),
+        ),
+      ),
+      onTap: activeName == null
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: activeName));
+              showToast('Nom copié dans le presse-papiers');
+            },
+      tapTooltip: activeName == null ? null : 'Cliquer pour copier le nom',
+      actions: [
+        SizedBox(
+          width: _kKomiIdentityActionSize,
+          height: _kKomiIdentityActionSize,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            tooltip: customizationHint,
+            icon: Icon(Icons.info_outline,
+                size: 18, color: Theme.of(context).colorScheme.primary),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: Text(translate('komi_home_device_name')),
+                content: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: SingleChildScrollView(
+                    child: Text(_confirmedPublicName != null
+                        ? 'Ce nom permet de se connecter à cet appareil sans saisir son ID. $customizationHint'
+                        : 'Nom d’hôte local (aucun nom de connexion confirmé). $customizationHint'),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: Text(translate('OK')),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget buildPopupMenu(BuildContext context) {
+    if (isKomiRemote) {
+      return _buildKomiIdentityAction(
+        icon: Icons.settings_outlined,
+        tooltip: translate('Settings'),
+        onTap: DesktopTabPage.onAddSetting,
+      );
+    }
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
     RxBool hover = false.obs;
     return InkWell(
@@ -267,7 +575,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                 ? Theme.of(context).scaffoldBackgroundColor
                 : Theme.of(context).colorScheme.background,
             child: Icon(
-              Icons.more_vert_outlined,
+              isKomiRemote ? Icons.settings_outlined : Icons.more_vert_outlined,
               size: 20,
               color: hover.value ? textColor : textColor?.withOpacity(0.5),
             ),
@@ -294,20 +602,63 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
     final showOneTime = model.approveMode != 'click' &&
         model.verificationMethod != kUsePermanentPassword;
+    if (isKomiRemote) {
+      final actions = <Widget>[];
+      if (showOneTime) {
+        actions.add(_buildKomiIdentityAction(
+          icon: Icons.refresh,
+          tooltip: translate('Refresh Password'),
+          onTap: () => bind.mainUpdateTemporaryPassword(),
+        ));
+      }
+      if (!bind.isDisableSettings()) {
+        actions.add(_buildKomiIdentityAction(
+          icon: Icons.edit_outlined,
+          tooltip: translate('Change Password'),
+          onTap: () => DesktopSettingPage.switch2page(SettingsTabKey.safety),
+        ));
+      }
+      return _buildKomiIdentityBlock(
+        context: context,
+        label: translate('One-time Password'),
+        value: TextFormField(
+          controller: model.serverPasswd,
+          readOnly: true,
+          decoration: const InputDecoration(
+            border: InputBorder.none,
+            isDense: true,
+            contentPadding: EdgeInsets.zero,
+          ),
+          style: const TextStyle(fontSize: 15),
+        ).workaroundFreezeLinuxMint(),
+        onDoubleTap: showOneTime
+            ? () {
+                Clipboard.setData(ClipboardData(text: model.serverPasswd.text));
+                showToast(translate('Copied'));
+              }
+            : null,
+        actions: actions,
+      );
+    }
     return Container(
-      margin: EdgeInsets.only(left: 20.0, right: 16, top: 13, bottom: 13),
+      height: _kKomiIdentityBlockHeight,
+      margin: const EdgeInsets.only(
+          left: _kKomiIdentityLeftMargin,
+          right: _kKomiIdentityRightMargin,
+          top: _kKomiIdentityVerticalGap,
+          bottom: _kKomiIdentityVerticalGap),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
           Container(
-            width: 2,
-            height: 52,
-            decoration: BoxDecoration(color: MyTheme.accent),
+            width: _kKomiIdentityAccentWidth,
+            height: _kKomiIdentityAccentHeight,
+            decoration: const BoxDecoration(color: MyTheme.accent),
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(left: 7),
+              padding: const EdgeInsets.only(left: _kKomiIdentityInset),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -389,8 +740,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   buildTip(BuildContext context) {
     final isOutgoingOnly = bind.isOutgoingOnly();
     return Padding(
-      padding:
-          const EdgeInsets.only(left: 20.0, right: 16, top: 16.0, bottom: 5),
+      padding: EdgeInsets.only(
+          left: 20.0, right: 16, top: 16.0, bottom: isKomiRemote ? 14.0 : 5.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -410,11 +761,29 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           SizedBox(
             height: 10.0,
           ),
-          if (!isOutgoingOnly)
+          if (!isOutgoingOnly && !isKomiRemote)
             Text(
               translate("desk_tip"),
               overflow: TextOverflow.clip,
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          // KomiRemote: the tip follows the approve mode actually enforced by the engine.
+          if (!isOutgoingOnly && isKomiRemote)
+            Consumer<ServerModel>(
+              builder: (context, model, child) => Align(
+                alignment: Alignment.center,
+                child: Text(
+                  translate(model.approveMode == 'click'
+                      ? 'komi_desk_tip_click'
+                      : model.approveMode == 'password'
+                          ? 'komi_desk_tip_password'
+                          : 'komi_desk_tip_both'),
+                  textAlign: TextAlign.center,
+                  softWrap: true,
+                  overflow: TextOverflow.clip,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
             ),
           if (isOutgoingOnly)
             Text(
@@ -597,22 +966,43 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       }
     }
 
+    final cardColors = Theme.of(context).colorScheme;
+    final cardActions = ColorScheme.fromSeed(
+        seedColor: cardColors.secondary,
+        brightness: Theme.of(context).brightness);
+    final cardForeground = isKomiRemote ? cardColors.onSurface : Colors.white;
+    final compactKomiInstall = isKomiRemote && btnText == 'Install';
+    final effectiveMarginTop = compactKomiInstall ? 12.0 : marginTop;
+    final cardPadding = compactKomiInstall ? 12.0 : 16.0;
+    final installIconSize = compactKomiInstall ? 20.0 : 24.0;
+    final installIconGap = compactKomiInstall ? 4.0 : 8.0;
+    final contentGap = compactKomiInstall ? 10.0 : 20.0;
+    final installButtonPadding = compactKomiInstall ? 6.0 : 8.0;
+    final installButtonTextSize = compactKomiInstall ? 16.0 : 20.0;
     return Stack(
       children: [
         Container(
-          margin: EdgeInsets.fromLTRB(
-              0, marginTop, 0, bind.isIncomingOnly() ? marginTop : 0),
+          margin: EdgeInsets.fromLTRB(0, effectiveMarginTop, 0,
+              bind.isIncomingOnly() ? effectiveMarginTop : 0),
           child: Container(
-              decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Color.fromARGB(255, 226, 66, 188),
-                  Color.fromARGB(255, 244, 114, 124),
-                ],
-              )),
-              padding: EdgeInsets.all(20),
+              decoration: isKomiRemote
+                  ? BoxDecoration(
+                      color: cardColors.surface,
+                      border: Border.all(
+                          color: cardActions.primary.withOpacity(0.55)),
+                      borderRadius: BorderRadius.circular(10),
+                    )
+                  : const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [
+                          Color.fromARGB(255, 226, 66, 188),
+                          Color.fromARGB(255, 244, 114, 124),
+                        ],
+                      ),
+                    ),
+              padding: EdgeInsets.all(cardPadding),
               child: Column(
                   mainAxisAlignment: MainAxisAlignment.start,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,39 +1012,73 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                   child: Text(
                                 translate(title),
                                 style: TextStyle(
-                                    color: Colors.white,
+                                    color: cardForeground,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 15),
                               ).marginOnly(bottom: 6)),
                             ]
                           : <Widget>[]) +
                       <Widget>[
+                        if (isKomiRemote && btnText == 'Install')
+                          Center(
+                            child: Icon(Icons.install_desktop_outlined,
+                                color: cardActions.primary,
+                                size: installIconSize),
+                          ).marginOnly(bottom: installIconGap),
                         if (content.isNotEmpty)
                           Text(
                             translate(content),
+                            textAlign: compactKomiInstall
+                                ? TextAlign.center
+                                : TextAlign.start,
                             style: TextStyle(
                                 height: 1.5,
-                                color: Colors.white,
+                                color: cardForeground,
                                 fontWeight: FontWeight.normal,
                                 fontSize: 13),
-                          ).marginOnly(bottom: 20)
+                          ).marginOnly(bottom: contentGap),
                       ] +
                       (btnText.isNotEmpty
                           ? <Widget>[
                               Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    FixedWidthButton(
-                                      width: 150,
-                                      padding: 8,
-                                      isOutline: true,
-                                      text: translate(btnText),
-                                      textColor: Colors.white,
-                                      borderColor: Colors.white,
-                                      textSize: 20,
-                                      radius: 10,
-                                      onTap: onPressed,
-                                    )
+                                    if (isKomiRemote)
+                                      SizedBox(
+                                        width: 150,
+                                        child: ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                cardActions.primary,
+                                            foregroundColor:
+                                                cardActions.onPrimary,
+                                            padding: EdgeInsets.all(
+                                                installButtonPadding),
+                                            textStyle: TextStyle(
+                                                fontSize:
+                                                    installButtonTextSize),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                          onPressed: onPressed,
+                                          child: Text(translate(btnText)),
+                                        ),
+                                      )
+                                    else
+                                      FixedWidthButton(
+                                        width: 150,
+                                        padding: installButtonPadding,
+                                        isOutline: true,
+                                        text: translate(btnText),
+                                        textColor: Colors.white,
+                                        borderColor: Colors.white,
+                                        textSize: installButtonTextSize,
+                                        radius: 10,
+                                        onTap: onPressed,
+                                      )
                                   ])
                             ]
                           : <Widget>[]) +
@@ -669,7 +1093,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                         style: TextStyle(
                                             decoration:
                                                 TextDecoration.underline,
-                                            color: Colors.white,
+                                            color: cardForeground,
                                             fontSize: 12),
                                       )).marginOnly(top: 6)),
                             ]
@@ -682,7 +1106,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
             child: IconButton(
               icon: Icon(
                 Icons.close,
-                color: Colors.white,
+                color: cardForeground,
                 size: 20,
               ),
               onPressed: closeCard,
@@ -695,8 +1119,13 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   @override
   void initState() {
     super.initState();
+    if (isKomiRemote) {
+      komiActivePublicName.addListener(_onPublicNameChanged);
+      komiScheduleUpdateCheck();
+    }
     _updateTimer = periodic_immediate(const Duration(seconds: 1), () async {
       await gFFI.serverModel.fetchID();
+      if (isKomiRemote) await _refreshNameStatus();
       final error = await bind.mainGetError();
       if (systemError != error) {
         systemError = error;
@@ -765,7 +1194,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     bool isChattyMethod(String methodName) {
       switch (methodName) {
-        case kWindowBumpMouse: return true;
+        case kWindowBumpMouse:
+          return true;
       }
 
       return false;
@@ -774,7 +1204,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
       if (!isChattyMethod(call.method)) {
         debugPrint(
-          "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+            "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
       }
       if (call.method == kWindowMainWindowOnTop) {
         windowOnTop(null);
@@ -802,9 +1232,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           connToken: call.arguments['connToken'],
         );
       } else if (call.method == kWindowBumpMouse) {
-        return RdPlatformChannel.instance.bumpMouse(
-          dx: call.arguments['dx'],
-          dy: call.arguments['dy']);
+        return RdPlatformChannel.instance
+            .bumpMouse(dx: call.arguments['dx'], dy: call.arguments['dy']);
       } else if (call.method == kWindowEventMoveTabToNewWindow) {
         final args = call.arguments.split(',');
         int? windowId;
@@ -867,6 +1296,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
   @override
   void dispose() {
+    if (isKomiRemote) {
+      komiActivePublicName.removeListener(_onPublicNameChanged);
+    }
     _uniLinksSubscription?.cancel();
     Get.delete<RxBool>(tag: 'stop-service');
     _updateTimer?.cancel();

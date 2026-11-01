@@ -32,6 +32,27 @@ droits sont consignés dans `/home/hermes/projects/komiremote-implementation-sta
 Aucun binaire Windows n'est présenté comme validé ; les sections ci-dessous sont
 la recette et les limites historiques, non une preuve d'exécution.
 
+## Correction ciblée MSBuild après le premier run réel
+
+Le run `39084068352` sur `0648cab65339e6d81daccc6546b39fe9630fa89a`
+a réussi validate/bridge, puis échoué dans le preflight Windows avant compilation :
+Bash ligne 14, `msbuild: command not found`, exit 127. Les logs complets montrent
+que l'action MSBuild épinglée a réussi et trouvé VS 2022 Enterprise via vswhere ;
+son code vérifie `MSBuild.exe` avant de publier `msbuildPath` et d'ajouter le
+répertoire au PATH. La rupture observée est donc la résolution par nom dans le
+Bash suivant, pas une erreur de compilation ni une preuve d'absence de VS.
+Les logs ne contiennent pas le PATH effectif : ils ne permettent pas d'attribuer
+plus précisément la cause à PowerShell, à la casse ou à l'architecture.
+
+Le preflight consomme maintenant `steps.msbuild.outputs.msbuildPath` via `env`,
+convertit le répertoire avec `cygpath -u`, vérifie le fichier, puis appelle le
+chemin absolu cité `MSBuild.exe -version`. Après réussite, ce même chemin est
+exporté via `GITHUB_ENV` et réutilisé pour WindowInjection. Aucun contrôle n'est
+supprimé ; SHA action, architecture par défaut et toolsets restent inchangés.
+Le test local reproduit l'exit 127 avec PATH sans MSBuild, puis réussit avec un
+chemin contenant des espaces. C'est une fixture Bash, pas MSBuild ni un build
+Windows. Le nouveau run et son état sont suivis dans le statut externe durable.
+
 ## État historique avant cette autorisation
 
 Le workflow `.github/workflows/komiremote-windows-test.yml` est **préparé localement,
@@ -175,14 +196,13 @@ confiance à auditer. Aucun client ou installateur du payload n'est exécuté.
    formes indirectes/localisées non reconnues, layout modifié ou dépendance après
    retrait Win32/helpers = échec à revoir, jamais un fallback silencieux. Aucun
    layout des quatre ZIP natifs n'a été validé sur leurs octets ici (B1 non levé).
-7. Renommage **au packaging seulement** de `rustdesk.exe` en `KomiRemote.exe` ;
-   CMake/build.py, `librustdesk.dll`, exports FFI et noms drivers inchangés.
-   Le futur wrapper upstream déduirait `komiremote` du stem (comparaison Windows
-   insensible à la casse), distinct de `%LOCALAPPDATA%\rustdesk`. Mais aucun wrapper
-   n'est construit maintenant : pas d'extraction/suppression automatique de ce
-   répertoire par le packaging. Le ZIP contient un dossier `KomiRemote/`, avec
-   `KomiRemote.exe`, le payload entier, `LICENCE` et `NOT-STANDALONE.txt`.
-   Le renommage est testé en fixture, pas par un démarrage réel Windows.
+7. **Aucun renommage** (révision Phase 2) : `assemble.py` n'est plus appelé par le
+   workflow. Après `build.py`, le dossier `Release` devient `rustdesk/` comme dans
+   `flutter-build.yml` upstream, puis reçoit le même payload (usbmmidd_v2 sans
+   Win32/installeurs, `drivers/RustDeskPrinterDriver`, `printer_driver_adapter.dll`,
+   `WindowInjection.dll`) depuis les téléchargements vérifiés SHA256. `rustdesk.exe`,
+   `librustdesk.dll` et `%APPDATA%\RustDesk` restent ceux d'upstream. Le ZIP contient
+   `rustdesk/` avec le payload, `LICENCE` et `NOT-STANDALONE.txt`.
 8. `inspect_imports.ps1` trouve dumpbin x64 de VS via vswhere et conserve `/HEADERS`,
    `/DEPENDENTS`, `/IMPORTS` pour les EXE/DLL/SYS, dont WindowInjection. Tout échec
    du lecteur empêche l'upload. Le chemin du lecteur et le manifeste CMake sont

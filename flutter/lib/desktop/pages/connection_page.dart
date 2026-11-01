@@ -20,6 +20,7 @@ import '../../common/widgets/peer_tab_page.dart';
 import '../../common/widgets/autocomplete.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
+import 'package:flutter_hbb/desktop/komi_branding.dart' show isKomiRemote;
 
 class OnlineStatusWidget extends StatefulWidget {
   const OnlineStatusWidget({Key? key, this.onSvcStatusChanged})
@@ -35,6 +36,7 @@ class OnlineStatusWidget extends StatefulWidget {
 class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   final _svcStopped = Get.find<RxBool>(tag: 'stop-service');
   final _svcIsUsingPublicServer = true.obs;
+  final _ipcConnected = false.obs;
   Timer? _updateTimer;
 
   double get em => 14.0;
@@ -159,10 +161,16 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
       _svcStopped.value
           ? translate("Service is not running")
           : stateGlobal.svcStatus.value == SvcStatus.connecting
-              ? translate("connecting_status")
+              ? translate(
+                  isKomiRemote ? "komi_status_connecting" : "connecting_status")
               : stateGlobal.svcStatus.value == SvcStatus.notReady
-                  ? translate("not_ready_status")
-                  : translate('Ready'),
+                  ? translate(isKomiRemote
+                      ? (_ipcConnected.value
+                          ? "komi_status_rendezvous_unreachable"
+                          : "komi_status_service_unavailable")
+                      : "not_ready_status")
+                  // ready == RegisterPeerResponse received from the rendezvous server
+                  : translate(isKomiRemote ? "komi_status_connected" : 'Ready'),
       style: TextStyle(fontSize: em),
     );
   }
@@ -171,6 +179,8 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     final status =
         jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
     final statusNum = status['status_num'] as int;
+    final ipcConnected = status['ipc_connected'] as bool? ?? false;
+    _ipcConnected.value = ipcConnected;
     if (statusNum == 0) {
       stateGlobal.svcStatus.value = SvcStatus.connecting;
     } else if (statusNum == -1) {
@@ -340,6 +350,42 @@ class _ConnectionPageState extends State<ConnectionPage>
         isTcpTunneling: isTcpTunneling);
   }
 
+  Widget _buildKomiConnectionTitle(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Flexible(
+          child: Text(
+            translate('Control Remote Desktop'),
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        IconButton(
+          tooltip: translate('komi_connection_help'),
+          icon: const Icon(Icons.help_outline, size: 18),
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(translate('komi_connection_help_title')),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: SingleChildScrollView(
+                  child: Text(translate('komi_connection_help')),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text(translate('OK')),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// UI for the remote ID TextField.
   /// Search for a peer.
   Widget _buildRemoteIDTextField(BuildContext context) {
@@ -352,7 +398,10 @@ class _ConnectionPageState extends State<ConnectionPage>
       child: Ink(
         child: Column(
           children: [
-            getConnectionPageTitle(context, false).marginOnly(bottom: 15),
+            (isKomiRemote
+                    ? _buildKomiConnectionTitle(context)
+                    : getConnectionPageTitle(context, false))
+                .marginOnly(bottom: 15),
             Row(
               children: [
                 Expanded(
@@ -519,11 +568,34 @@ class _ConnectionPageState extends State<ConnectionPage>
               padding: const EdgeInsets.only(top: 13.0),
               child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                 SizedBox(
-                  height: 28.0,
+                  width: isKomiRemote ? 150.0 : null,
+                  height: isKomiRemote ? 36.0 : 28.0,
                   child: ElevatedButton(
                     onPressed: () {
                       onConnect();
                     },
+                    style: isKomiRemote
+                        ? ElevatedButton.styleFrom(
+                            backgroundColor: MyTheme.accent,
+                            foregroundColor: const Color(0xFF111419),
+                            disabledBackgroundColor:
+                                MyTheme.accent.withOpacity(0.55),
+                            disabledForegroundColor:
+                                const Color(0xFF111419).withOpacity(0.8),
+                            overlayColor: MyTheme.accent.withOpacity(0.10),
+                            padding: const EdgeInsets.all(6.0),
+                            minimumSize: const Size(150.0, 36.0),
+                            side: const BorderSide(color: MyTheme.accent),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            elevation: 0,
+                            textStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.normal,
+                            ),
+                          )
+                        : null,
                     child: Text(translate("Connect")),
                   ),
                 ),

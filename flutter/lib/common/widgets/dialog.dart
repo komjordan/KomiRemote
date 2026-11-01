@@ -14,6 +14,8 @@ import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_hbb/utils/http_service.dart' as http;
+import 'package:flutter_hbb/common/formatter/id_formatter.dart' show trimID;
+import 'package:flutter_hbb/desktop/komi_public_names.dart';
 
 import '../../common.dart';
 import '../../models/model.dart';
@@ -72,68 +74,191 @@ class RegexValidationRule extends ValidationRule {
 void changeIdDialog() {
   var newId = "";
   var msg = "";
+  var info = "";
   var isInProgress = false;
+  var closed = false;
+  var started = false;
+  var confirmRelease = false;
+  String? current;
   TextEditingController controller = TextEditingController();
   final RxString rxId = controller.text.trim().obs;
+  // KomiRemote: the native NOT_SUPPORT change-ID call is replaced by the
+  // signed public-name registry (DPAPI key held by librustdesk.dll).
+  final management = KomiNameManagement.configured();
+  final rustdeskId = trimID(gFFI.serverModel.serverId.text);
 
   final rules = [
     RegexValidationRule('starts with a letter', RegExp(r'^[a-zA-Z]')),
-    LengthRangeValidationRule(6, 16),
+    LengthRangeValidationRule(3, 16),
     RegexValidationRule('allowed characters', RegExp(r'^[\w-]*$'))
   ];
 
   gFFI.dialogManager.show((setState, close, context) {
-    submit() async {
-      debugPrint("onSubmit");
-      newId = controller.text.trim();
+    done() {
+      closed = true;
+      close();
+    }
 
+    fail(String text) {
+      if (closed) return;
+      setState(() {
+        isInProgress = false;
+        info = "";
+        msg = (isDesktop || isWebDesktop)
+            ? '${translate('Prompt')}: $text'
+            : text;
+      });
+    }
+
+    String? validName() {
+      newId = controller.text.trim();
       final Iterable violations = rules.where((r) => !r.validate(newId));
       if (violations.isNotEmpty) {
         setState(() {
+          info = "";
           msg = (isDesktop || isWebDesktop)
               ? '${translate('Prompt')}:  ${violations.map((r) => r.name).join(', ')}'
               : violations.map((r) => r.name).join(', ');
         });
+        return null;
+      }
+      final name = newId.toLowerCase();
+      if (!validKomiAlias(name)) {
+        fail('Nom réservé ou invalide');
+        return null;
+      }
+      return name;
+    }
+
+    if (!started) {
+      started = true;
+      if (management == null || !validKomiId(rustdeskId)) {
+        msg = 'Service de noms indisponible';
+      } else {
+        isInProgress = true;
+        () async {
+          try {
+            final status = await management.status(rustdeskId);
+            if (closed) return;
+            final alias =
+                confirmedKomiStatus(status, management.registry.namespace);
+            setState(() {
+              isInProgress = false;
+              current = alias;
+              if (alias != null) {
+                controller.text = alias;
+                rxId.value = alias;
+              }
+            });
+            if (komiActivePublicName.value != alias) {
+              komiActivePublicName.value = alias;
+            }
+          } on PublicNameException catch (e) {
+            fail(e.message);
+          }
+        }();
+      }
+    }
+
+    check() async {
+      if (isInProgress || management == null) return;
+      final name = validName();
+      if (name == null) return;
+      if (name == current) {
+        setState(() {
+          msg = "";
+          info = 'Nom actuellement réservé par cette installation';
+        });
         return;
       }
+      setState(() {
+        msg = "";
+        info = "";
+        isInProgress = true;
+      });
+      try {
+        final available = await management.availability(name);
+        if (closed) return;
+        if (!available) return fail('Nom déjà réservé');
+        setState(() {
+          isInProgress = false;
+          info = 'Nom disponible';
+        });
+      } on PublicNameException catch (e) {
+        fail(e.message);
+      }
+    }
 
+    submit() async {
+      debugPrint("onSubmit");
+      if (isInProgress || management == null) return;
+      final name = validName();
+      if (name == null) return;
+      final operation = komiNameDialogOperation(current, name);
+      if (operation == null) {
+        done();
+        return;
+      }
+      setState(() {
+        msg = "";
+        info = "";
+        confirmRelease = false;
+        isInProgress = true;
+      });
+      try {
+        if (!await management.availability(name)) {
+          return fail('Nom déjà réservé');
+        }
+        await management.change(
+            operation, operation == 'register' ? name : current!, rustdeskId,
+            newAlias: operation == 'rename' ? name : null);
+        komiActivePublicName.value = name;
+        if (!closed) done();
+      } on PublicNameException catch (e) {
+        fail(e.message);
+      }
+    }
+
+    release() async {
+      final reserved = current;
+      if (isInProgress || management == null || reserved == null) return;
+      if (!confirmRelease) {
+        setState(() {
+          confirmRelease = true;
+          info = "";
+          msg = 'Cliquez de nouveau sur Libérer pour confirmer';
+        });
+        return;
+      }
       setState(() {
         msg = "";
         isInProgress = true;
-        bind.mainChangeId(newId: newId);
       });
-
-      var status = await bind.mainGetAsyncStatus();
-      while (status == " ") {
-        await Future.delayed(const Duration(milliseconds: 100));
-        status = await bind.mainGetAsyncStatus();
+      try {
+        await management.change('release', reserved, rustdeskId);
+        komiActivePublicName.value = null;
+        if (!closed) done();
+      } on PublicNameException catch (e) {
+        fail(e.message);
       }
-      if (status.isEmpty) {
-        // ok
-        close();
-        return;
-      }
-      setState(() {
-        isInProgress = false;
-        msg = (isDesktop || isWebDesktop)
-            ? '${translate('Prompt')}: ${translate(status)}'
-            : translate(status);
-      });
     }
 
     return CustomAlertDialog(
-      title: Text(translate("Change ID")),
+      title: Text(translate("Nom de connexion personnalisé")),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(translate("id_change_tip")),
+          Text(current == null
+              ? 'Seuls les caractères a-z, A-Z, 0-9, - (trait d’union) et _ (tiret bas) sont autorisés. La première lettre doit être a-z ou A-Z. La longueur doit être comprise entre 3 et 16.'
+              : 'Nom actuel : $current. Saisissez un autre nom pour le changer, ou libérez-le.'),
           const SizedBox(
             height: 12.0,
           ),
           TextField(
             decoration: InputDecoration(
-                labelText: translate('Your new ID'),
+                labelText: translate('Nom de connexion personnalisé'),
                 errorText: msg.isEmpty ? null : translate(msg),
+                helperText: info.isEmpty ? null : info,
                 suffixText: '${rxId.value.length}/16',
                 suffixStyle: const TextStyle(fontSize: 12, color: Colors.grey)),
             inputFormatters: [
@@ -146,6 +271,8 @@ void changeIdDialog() {
               setState(() {
                 rxId.value = value.trim();
                 msg = '';
+                info = '';
+                confirmRelease = false;
               });
             },
           ).workaroundFreezeLinuxMint(),
@@ -177,11 +304,15 @@ void changeIdDialog() {
         ],
       ),
       actions: [
-        dialogButton("Cancel", onPressed: close, isOutline: true),
-        dialogButton("OK", onPressed: submit),
+        dialogButton("Cancel", onPressed: done, isOutline: true),
+        dialogButton("Vérifier la disponibilité",
+            onPressed: check, isOutline: true),
+        if (current != null)
+          dialogButton("Libérer", onPressed: release, isOutline: true),
+        dialogButton("Appliquer", onPressed: submit),
       ],
       onSubmit: submit,
-      onCancel: close,
+      onCancel: done,
     );
   });
 }
@@ -1588,7 +1719,7 @@ showAuditDialog(FFI ffi) async {
 }
 
 bool allowAskForNoteAtEndOfConnection(FFI? ffi, bool closedByControlling) {
-  if (ffi == null) {
+  if (!kKomiNoteAtConnEndEnabled || ffi == null) {
     return false;
   }
   return mainGetLocalBoolOptionSync(kOptionAllowAskForNoteAtEndOfConnection) &&

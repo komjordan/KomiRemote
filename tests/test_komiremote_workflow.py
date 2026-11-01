@@ -48,7 +48,7 @@ class ManualWorkflowTests(unittest.TestCase):
             self.assertIn(required, all_runs)
 
     def test_referenced_build_helpers_exist(self):
-        for name in ('fetch_assets.py', 'assemble.py', 'provision_nasm.py', 'inspect_imports.ps1'):
+        for name in ('fetch_assets.py', 'provision_nasm.py', 'inspect_imports.ps1'):
             self.assertTrue((ROOT / '.github/komiremote' / name).is_file(), name)
         self.assertTrue((ROOT / 'docs/komiremote/NOT-STANDALONE.txt').is_file())
         inspection = (ROOT / '.github/komiremote/inspect_imports.ps1').read_text()
@@ -85,6 +85,33 @@ class ManualWorkflowTests(unittest.TestCase):
                                         capture_output=True, text=True)
                 self.assertEqual(result.returncode, returncode, result.stderr)
 
+    def test_msbuild_preflight_uses_verified_executable_without_path_lookup(self):
+        w = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+        steps = w['jobs']['windows']['steps']
+        preflight = next(s['run'] for s in steps if 'msbuild -version' in s.get('run', '')
+                         or '"$msbuild_exe" -version' in s.get('run', ''))
+        version_line = next(line.strip() for line in preflight.splitlines()
+                            if 'msbuild -version' in line or '"$msbuild_exe" -version' in line)
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
+            # Executable fixture, not MSBuild or a Windows compile.
+            executable = Path(tmp) / 'VS with spaces' / 'MSBuild.exe'
+            executable.parent.mkdir()
+            executable.write_text('#!/bin/bash\n[[ "$1" == "-version" ]]\n')
+            executable.chmod(0o700)
+            result = subprocess.run(['/bin/bash', '-euc', version_line],
+                                    env={'PATH': '/nonexistent', 'msbuild_exe': str(executable)},
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        setup = next(s for s in steps if s.get('uses', '').startswith('microsoft/setup-msbuild@'))
+        self.assertEqual(next(s for s in steps if s.get('run') == preflight)['env']['MSBUILD_DIR'],
+                         '${{ steps.' + setup['id'] + '.outputs.msbuildPath }}')
+        self.assertIn('test -f "$msbuild_exe"', preflight)
+        self.assertIn('cygpath -u "$MSBUILD_DIR"', preflight)
+        self.assertIn('MSBUILD_EXE=%s', preflight)
+        self.assertIn('"$GITHUB_ENV"', preflight)
+        build = next(s['run'] for s in steps if 'WindowInjection.vcxproj' in s.get('run', ''))
+        self.assertIn('"$MSBUILD_EXE" .komiremote-topmost/', build)
+
     def test_only_non_standalone_zip_until_windows_dependency_validation(self):
         text = WORKFLOW.read_text()
         self.assertNotIn('python generate.py', text)
@@ -95,7 +122,7 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertIn('NOT-STANDALONE.txt', text)
         self.assertIn('inspect_imports.ps1', text)
 
-    def test_zip_step_packages_only_distinct_komiremote_namespace(self):
+    def test_zip_step_keeps_upstream_binary_names(self):
         w = yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
         run = next(s['run'] for s in w['jobs']['windows']['steps']
                    if 'shutil.make_archive' in s.get('run', ''))
@@ -104,17 +131,30 @@ class ManualWorkflowTests(unittest.TestCase):
         snippet = match.group(1)
         with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as tmp:
             root = Path(tmp)
-            (root / 'KomiRemote').mkdir()
+            (root / 'rustdesk').mkdir()
             (root / 'komiremote-test-output').mkdir()
-            for name in ('KomiRemote.exe', 'librustdesk.dll', 'NOT-STANDALONE.txt'):
-                (root / 'KomiRemote' / name).write_bytes(b'fixture, never executed')
+            for name in ('rustdesk.exe', 'librustdesk.dll', 'NOT-STANDALONE.txt'):
+                (root / 'rustdesk' / name).write_bytes(b'fixture, never executed')
             result = subprocess.run([sys.executable, '-c', snippet], cwd=root, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             archive, = (root / 'komiremote-test-output').glob('*.zip')
             with zipfile.ZipFile(archive) as z:
-                self.assertTrue(all(n.startswith('KomiRemote/') for n in z.namelist()))
-                self.assertIn('KomiRemote/KomiRemote.exe', z.namelist())
-                self.assertIn('KomiRemote/librustdesk.dll', z.namelist())
+                self.assertTrue(all(n.startswith('rustdesk/') for n in z.namelist()))
+                self.assertIn('rustdesk/rustdesk.exe', z.namelist())
+                self.assertIn('rustdesk/librustdesk.dll', z.namelist())
+
+    def test_native_build_path_without_custom_assembler_or_rename(self):
+        text = WORKFLOW.read_text()
+        self.assertNotIn('assemble.py', text)
+        self.assertNotIn('KomiRemote.exe', text)
+        self.assertNotIn('mv rustdesk ', text)
+        w = yaml.load(text, Loader=yaml.BaseLoader)
+        build = next(s['run'] for s in w['jobs']['windows']['steps']
+                     if 'build.py' in s.get('run', ''))
+        self.assertIn('mv flutter/build/windows/x64/runner/Release rustdesk', build)
+        for payload in ('usbmmidd_v2', 'drivers/RustDeskPrinterDriver', 'printer_driver_adapter.dll',
+                        'WindowInjection.dll', 'librustdesk.dll', 'dylib_virtual_display.dll'):
+            self.assertIn(payload, build)
 
     def test_manual_readonly_artifacts_only(self):
         self.assertTrue(WORKFLOW.exists(), 'dedicated manual workflow missing')

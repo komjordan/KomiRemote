@@ -675,7 +675,15 @@ impl InvokeUiSession for FlutterHandler {
     fn set_cursor_position(&self, cp: CursorPosition) {
         self.push_event(
             "cursor_position",
-            &[("x", &cp.x.to_string()), ("y", &cp.y.to_string())],
+            &[
+                ("x", &cp.x.to_string()),
+                ("y", &cp.y.to_string()),
+                // KomiRemote: name tag of the viewer moving the cursor (may be empty).
+                (
+                    "name",
+                    &crate::komi_cursor_tag::sanitize_controller_name(&cp.controller_name),
+                ),
+            ],
             &[],
         );
     }
