@@ -13,6 +13,7 @@ import 'package:flutter_hbb/desktop/komi_branding.dart';
 import 'package:flutter_hbb/desktop/komi_device_name.dart';
 import 'package:flutter_hbb/common/formatter/id_formatter.dart' show trimID;
 import 'package:flutter_hbb/desktop/komi_public_names.dart';
+import 'package:flutter_hbb/desktop/komi_update.dart';
 import 'package:flutter_hbb/desktop/pages/connection_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
@@ -1120,6 +1121,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     super.initState();
     if (isKomiRemote) {
       komiActivePublicName.addListener(_onPublicNameChanged);
+      komiScheduleUpdateCheck();
     }
     _updateTimer = periodic_immediate(const Duration(seconds: 1), () async {
       await gFFI.serverModel.fetchID();

@@ -59,11 +59,13 @@ class BrandPresentation(unittest.TestCase):
         about = (ROOT / 'flutter/lib/desktop/pages/desktop_setting_page.dart').read_text().split('class _AboutState', 1)[1]
         self.assertIn('_komiAboutInfo(', about)
         for required in ('Description : Bureau à distance', 'Éditeur : Axel KAMGAING KOM', 'https://komjordan.fr',
-                         'Licence : GNU AGPL-3.0',
+                         "const TextSpan(text: 'Licence : ')", "Text('GNU AGPL-3.0', style: linkStyle)",
+                         "', sans aucune garantie'", 'Version modifiée de RustDesk, 2026.',
                          'Empreinte numérique', 'LEGAL-NOTICES-KOMIREMOTE.md'):
             self.assertIn(required, about)
         self.assertNotIn('Fork indépendant de RustDesk OSS', about)
-        self.assertNotIn("link('Code source'", about)
+        # Source link points at the exact published tag.
+        self.assertIn("link('Code source', kKomiSourceUrl, kKomiSourceUrl)", about)
         self.assertNotIn("Projet d'origine", about)
         # Upstream attribution and access to full legal notices remain visible.
         self.assertIn('Purslane Tech Pte. Ltd.', about)

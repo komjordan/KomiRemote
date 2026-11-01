@@ -867,11 +867,15 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
       final borderRadius = _collapseHandleBorderRadius(edge);
       return Offstage(
         offstage: _dragging.isTrue,
+        // Expanded: the handle buttons sit directly in the main bar, with no
+        // own frame, shadow or separator. Collapsed: keep the floating look.
         child: Material(
-          elevation: _ToolbarTheme.elevation,
-          shadowColor: MyTheme.color(context).shadow,
-          color: _ToolbarTheme.barBackground(context),
-          borderRadius: borderRadius,
+          type: compact ? MaterialType.canvas : MaterialType.transparency,
+          elevation: compact ? _ToolbarTheme.elevation : 0,
+          shadowColor:
+              compact ? MyTheme.color(context).shadow : Colors.transparent,
+          color: compact ? _ToolbarTheme.barBackground(context) : null,
+          borderRadius: compact ? borderRadius : null,
           child: _DraggableShowHide(
             id: widget.id,
             ffi: widget.ffi,
@@ -3805,25 +3809,17 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
     );
     return TextButtonTheme(
       data: TextButtonThemeData(style: buttonStyle),
-      child: Container(
-        decoration: BoxDecoration(
-          color: _ToolbarTheme.barBackground(context),
-          border: Border.all(
-            color: _ToolbarTheme.borderColor(context),
-            width: 1,
-          ),
-          borderRadius: widget.borderRadius,
-        ),
-        child: SizedBox(
-          // 32px buttons + 6px margins on each side, like the main toolbar.
-          height: widget.isHorizontal
-              ? RemoteToolbarCompactControls.crossAxisExtent
-              : null,
-          width: widget.isHorizontal
-              ? null
-              : RemoteToolbarCompactControls.crossAxisExtent,
-          child: child,
-        ),
+      // No own background or border: the expanded handle is part of the
+      // continuous toolbar.
+      child: SizedBox(
+        // 32px buttons + 6px margins on each side, like the main toolbar.
+        height: widget.isHorizontal
+            ? RemoteToolbarCompactControls.crossAxisExtent
+            : null,
+        width: widget.isHorizontal
+            ? null
+            : RemoteToolbarCompactControls.crossAxisExtent,
+        child: child,
       ),
     );
   }

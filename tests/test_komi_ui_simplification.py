@@ -89,7 +89,8 @@ class KomiUiSimplification(unittest.TestCase):
         self.assertIn("Portfolio", source)
         self.assertIn("Icons.language_outlined", source)
         self.assertIn("Axel KAMGAING KOM", source)
-        self.assertNotIn("link('Code source'", source)
+        # v15: the source link is back, pinned to the published release tag.
+        self.assertIn("link('Code source', kKomiSourceUrl, kKomiSourceUrl)", source)
         komi_branch = source[source.index("if (isKomiRemote) {") : source.index(
             "return SingleChildScrollView(", source.index("if (isKomiRemote) {") + 1
         )]

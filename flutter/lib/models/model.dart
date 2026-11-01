@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
@@ -4009,12 +4010,58 @@ class RecordingModel with ChangeNotifier {
     if (value) {
       await sessionRefreshVideo(sessionId, pi);
     }
+    _stopRequestedByUser = !value;
     await bind.sessionRecordScreen(sessionId: sessionId, start: value);
   }
 
+  // Set when the user stops the recording from the toolbar, so the
+  // "saved to" dialog is not shown for stops caused by closing the session.
+  bool _stopRequestedByUser = false;
+
   updateStatus(bool status) {
+    final stopped = _start && !status;
     _start = status;
     notifyListeners();
+    if (stopped && _stopRequestedByUser && isDesktop) {
+      _stopRequestedByUser = false;
+      _showRecordingSavedDialog();
+    }
+  }
+
+  void _showRecordingSavedDialog() {
+    final dialogManager = parent.target?.dialogManager;
+    if (dialogManager == null) return;
+    String dir;
+    try {
+      dir = bind.mainVideoSaveDirectory(root: false);
+    } catch (_) {
+      return;
+    }
+    if (dir.isEmpty) return;
+    dialogManager.show(
+      (setState, close, context) => CustomAlertDialog(
+        title: Text(translate('Recording')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(translate('komi_recording_saved_to')),
+            const SizedBox(height: 8),
+            SelectableText(dir),
+          ],
+        ),
+        actions: [
+          dialogButton('komi_open_folder', isOutline: true, onPressed: () {
+            close();
+            launchUrl(Uri.file(dir));
+          }),
+          dialogButton('komi_ok', onPressed: close),
+        ],
+        onSubmit: close,
+        onCancel: close,
+      ),
+      tag: 'komi-recording-saved',
+    );
   }
 }
 

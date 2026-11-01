@@ -62,7 +62,10 @@ class KomiV14(unittest.TestCase):
         self.assertIn("barBackground(context)", bar)
 
     def test_build_number(self):
-        self.assertRegex(read("flutter/pubspec.yaml"), r"(?m)^version: 1\.5\.1\+69$")
+        # v14 shipped as 1.5.1+69; later builds keep 1.5.1 and raise the build.
+        m = re.search(r"(?m)^version: 1\.5\.1\+(\d+)$", read("flutter/pubspec.yaml"))
+        self.assertIsNotNone(m)
+        self.assertGreaterEqual(int(m.group(1)), 69)
 
 
 if __name__ == "__main__":

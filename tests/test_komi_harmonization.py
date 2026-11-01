@@ -43,7 +43,8 @@ class KomiHarmonization(unittest.TestCase):
     def test_about_is_simplified_and_has_horizontal_logo(self):
         source = SETTINGS.read_text(encoding="utf-8")
         self.assertNotIn("line('Projet : Fork indépendant de RustDesk OSS')", source)
-        self.assertNotIn("link('Code source'", source)
+        # v15: the source link is back, pinned to the published release tag.
+        self.assertIn("link('Code source', kKomiSourceUrl, kKomiSourceUrl)", source)
         self.assertNotIn('"Projet d\'origine"', source)
         self.assertIn("title_suffix: [", source)
         self.assertIn("Widget _komiAboutLogo()", source)

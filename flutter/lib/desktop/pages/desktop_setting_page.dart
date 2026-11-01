@@ -2641,6 +2641,13 @@ class _AboutState extends State<_About> {
   }
 }
 
+const String kKomiLicenceUrl =
+    'https://github.com/komjordan/KomiRemote/blob/main/LICENCE';
+const String kKomiSourceUrl =
+    'https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.70';
+const String kKomiLegalNoticesUrl =
+    'https://github.com/komjordan/KomiRemote/blob/v1.5.1-komi.70/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md';
+
 // Compact KomiRemote product information. Full modification, attribution and
 // no-warranty notices remain in LICENCE and LEGAL-NOTICES-KOMIREMOTE.md.
 List<Widget> _komiAboutInfo(
@@ -2699,7 +2706,29 @@ List<Widget> _komiAboutInfo(
         ),
       );
     }),
-    line('Licence : GNU AGPL-3.0'),
+    // The licence is named once; its name opens the LICENCE file.
+    Builder(builder: (context) {
+      final style = DefaultTextStyle.of(context).style;
+      return Text.rich(
+        TextSpan(
+          style: style,
+          children: [
+            const TextSpan(text: 'Licence : '),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: InkWell(
+                onTap: () => launchUrlString(kKomiLicenceUrl),
+                child: Text('GNU AGPL-3.0', style: linkStyle),
+              ),
+            ),
+            const TextSpan(text: ', sans aucune garantie'),
+          ],
+        ),
+      ).marginSymmetric(vertical: 3.0);
+    }),
+    line('Version modifiée de RustDesk, 2026.'),
+    link('Code source', kKomiSourceUrl, kKomiSourceUrl),
     line('Date de compilation : $buildDate'),
     line('Version : 1.5.1'),
     line('Empreinte numérique :'),
@@ -2724,8 +2753,6 @@ List<Widget> _komiAboutInfo(
         ),
       );
     }),
-    link('Voir la licence GNU AGPL-3.0 pour plus de détails.', 'LICENCE',
-        'https://github.com/komjordan/KomiRemote/blob/main/LICENCE'),
     const SizedBox(height: 18),
     Builder(builder: (context) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2761,8 +2788,7 @@ List<Widget> _komiAboutInfo(
         ),
       );
     }),
-    link('Mentions légales', 'LEGAL-NOTICES-KOMIREMOTE.md',
-        'https://github.com/komjordan/KomiRemote/blob/main/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md'),
+    link('Mentions légales', 'LEGAL-NOTICES-KOMIREMOTE.md', kKomiLegalNoticesUrl),
     const SizedBox(height: 8),
   ];
 }
