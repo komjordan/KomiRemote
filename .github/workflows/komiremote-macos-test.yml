@@ -4,6 +4,10 @@ name: KomiRemote macOS unsigned test (manual)
 # flutter-build.yml (its upload flag also publishes releases).
 "on":
   workflow_dispatch:
+  # TEMPORARY: registers the workflow (dispatch needs a prior run when the
+  # file is not on main). Removed in a follow-up commit. Branch-limited.
+  push:
+    branches: [komiremote-macos]
 
 permissions:
   contents: read
