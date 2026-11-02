@@ -2643,8 +2643,13 @@ class _AboutState extends State<_About> {
 
 const String kKomiLicenceUrl =
     'https://github.com/komjordan/KomiRemote/blob/main/LICENCE';
-const String kKomiSourceUrl =
+const String kKomiWindowsSourceUrl =
     'https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71';
+// macOS build: the CI workflow replaces the ref with the exact commit it builds.
+const String kKomiMacSourceUrl =
+    'https://github.com/komjordan/KomiRemote/tree/komiremote-macos';
+String get kKomiSourceUrl =>
+    Platform.isMacOS ? kKomiMacSourceUrl : kKomiWindowsSourceUrl;
 const String kKomiLegalNoticesUrl =
     'https://github.com/komjordan/KomiRemote/blob/v1.5.1-komi.71/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md';
 

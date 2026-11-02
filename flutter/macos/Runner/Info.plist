@@ -26,10 +26,10 @@
 			<key>CFBundleURLIconFile</key>
 			<string></string>
 			<key>CFBundleURLName</key>
-			<string>com.carriez.rustdesk</string>
+			<string>fr.komjordan.komiremote</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>rustdesk</string>
+				<string>komiremote</string>
 			</array>
 		</dict>
 	</array>
@@ -42,7 +42,9 @@
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Record the sound from microphone for the purpose of the remote desktop.</string>
+	<string>KomiRemote utilise le micro uniquement pour transmettre le son pendant une session de bureau à distance.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>KomiRemote a besoin de cette autorisation pour installer et mettre à jour son service en arrière-plan.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
     <key>LSUIElement</key>

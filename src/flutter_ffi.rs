@@ -32,8 +32,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-// Direct C exports are compiled into librustdesk.dll without bridge regeneration.
-#[cfg(target_os = "windows")]
+// Direct C exports are compiled into librustdesk.dll / liblibrustdesk.dylib without bridge regeneration.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 #[path = "komi_names.rs"]
 mod komi_names;
 

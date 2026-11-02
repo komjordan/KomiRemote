@@ -47,4 +47,28 @@ void main() {
     expect(komiUpdateCheckDue(now - day, now), isTrue);
     expect(komiUpdateCheckDue(now + 5000, now), isTrue);
   });
+  test('macOS reads optional mac_* fields, Windows ignores them', () {
+    const shared =
+        '"version":"1.5.1","build":72,"url":"https://komjordan.fr/KomiRemote.exe","sha256":"00","notes":"w"';
+    // No mac_url: macOS stays silent, Windows unchanged.
+    expect(komiNewerUpdate('{$shared}', currentBuild: 71, mac: true), isNull);
+    expect(komiNewerUpdate('{$shared}', currentBuild: 71)!.url.toString(),
+        'https://komjordan.fr/KomiRemote.exe');
+    // mac_url only: shared version/build/notes are reused.
+    final m1 = komiNewerUpdate('{$shared,"mac_url":"https://komjordan.fr/komi.html"}',
+        currentBuild: 71, mac: true);
+    expect(m1!.url.toString(), 'https://komjordan.fr/komi.html');
+    expect(m1.build, 72);
+    // mac_build overrides: a Windows-only bump does not reach macOS.
+    final body = '{$shared,"mac_url":"https://komjordan.fr/komi.html","mac_build":71,"mac_notes":"m"}';
+    expect(komiNewerUpdate(body, currentBuild: 71, mac: true), isNull);
+    expect(komiNewerUpdate(body, currentBuild: 71)!.url.toString(),
+        'https://komjordan.fr/KomiRemote.exe');
+    expect(komiNewerUpdate(body, currentBuild: 70, mac: true)!.notes, 'm');
+    // Same URL rules for mac_url, and wrong types are rejected.
+    expect(komiNewerUpdate('{$shared,"mac_url":"https://evil.example/k.dmg"}',
+        currentBuild: 71, mac: true), isNull);
+    expect(komiNewerUpdate('{$shared,"mac_url":"https://komjordan.fr/","mac_build":"73"}',
+        currentBuild: 71, mac: true), isNull);
+  });
 }
