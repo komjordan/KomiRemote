@@ -2272,6 +2272,35 @@ pub fn cm_get_click_time() -> f64 {
 }
 
 pub fn cm_switch_permission(conn_id: i32, name: String, enabled: bool) {
+    // KomiRemote: host-side actions ride on this existing call so the generated bridge
+    // stays unchanged. They are not permissions, so they skip the permission policy.
+    #[cfg(not(any(target_os = "ios")))]
+    {
+        if name == "komi-voice-call" {
+            crate::ui_cm_interface::komi_request_voice_call(conn_id);
+            return;
+        }
+        if name == "komi-camera-invite" {
+            crate::ui_cm_interface::komi_camera_invite(conn_id, enabled);
+            return;
+        }
+        if name == "komi-video-call" {
+            crate::ui_cm_interface::komi_video_call(conn_id, if enabled { "request" } else { "hangup" }, enabled);
+            return;
+        }
+        if name == "komi-video-call-answer" {
+            crate::ui_cm_interface::komi_video_call(conn_id, if enabled { "accept" } else { "refuse" }, enabled);
+            return;
+        }
+        if let Some(input) = name.strip_prefix("komi-video-input:") {
+            crate::ui_cm_interface::komi_video_call(conn_id, &format!("video-input:{input}"), enabled);
+            return;
+        }
+        if name == "komi-video-camera" {
+            crate::ui_cm_interface::komi_video_call(conn_id, "camera", enabled);
+            return;
+        }
+    }
     #[cfg(not(any(target_os = "ios")))]
     crate::ui_cm_interface::switch_permission(conn_id, name, enabled)
 }
@@ -2291,6 +2320,15 @@ pub fn cm_switch_back(conn_id: i32) {
 }
 
 pub fn cm_get_config(name: String) -> String {
+    // Existing async bridge getter: discovery is local, does not activate a
+    // camera, and takes no connection/runtime/capture/cache lock.
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    if name == "komi-video-inputs" {
+        return match scrap::camera::Cameras::input_devices() {
+            Ok(devices) => serde_json::json!({"devices": devices}).to_string(),
+            Err(error) => serde_json::json!({"devices": [], "error": error.to_string()}).to_string(),
+        };
+    }
     #[cfg(not(target_os = "ios"))]
     {
         if let Ok(Some(v)) = crate::ipc::get_config(&name) {
@@ -2934,6 +2972,13 @@ pub fn session_get_common(
     if let Some(s) = sessions::get_session_by_session_id(&session_id) {
         let v = if key == "is_screenshot_supported" {
             s.is_screenshot_supported().to_string()
+        } else if key == "komi_answer_voice_call" {
+            // KomiRemote: answer a voice call started by the controlled PC.
+            s.komi_answer_voice_call(param == "1");
+            "".to_owned()
+        } else if key == "komi_video_call" {
+            s.komi_video_call(param);
+            "".to_owned()
         } else {
             "".to_owned()
         };

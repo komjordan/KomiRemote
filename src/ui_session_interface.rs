@@ -1615,6 +1615,20 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::CloseVoiceCall);
     }
 
+    // KomiRemote: accept or refuse a voice call started by the controlled PC.
+    #[inline]
+    pub fn komi_answer_voice_call(&self, accept: bool) {
+        #[cfg(target_os = "linux")]
+        if accept {
+            std::thread::spawn(crate::ipc::start_pa);
+        }
+        self.send(Data::KomiAnswerVoiceCall(accept));
+    }
+
+    pub fn komi_video_call(&self, cmd: String) {
+        self.send(Data::KomiVideoCall(cmd));
+    }
+
     pub fn send_selected_session_id(&self, sid: String) {
         if let Ok(sid) = sid.parse::<u32>() {
             self.lc.write().unwrap().selected_windows_session_id = Some(sid);
@@ -1743,6 +1757,10 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn on_voice_call_closed(&self, reason: &str);
     fn on_voice_call_waiting(&self);
     fn on_voice_call_incoming(&self);
+    // KomiRemote: the controlled PC offers to show its camera.
+    fn komi_camera_invite(&self) {}
+    fn update_komi_video_call_state(&self, _phase: &str, _local: bool, _remote: bool, _call_id: &str) {}
+    fn komi_video_frame(&self, _path: &str, _seq: u32, _stream: u32, _w: u32, _h: u32) {}
     fn get_rgba(&self, display: usize) -> *const u8;
     fn next_rgba(&self, display: usize);
     #[cfg(all(feature = "vram", feature = "flutter"))]

@@ -17,9 +17,7 @@ use crate::platform::WallPaperRemover;
 #[cfg(windows)]
 use crate::portable_service::client as portable_client;
 use crate::{
-    client::{
-        new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData, MediaSender,
-    },
+    client::{new_voice_call_response, start_audio_thread, MediaData, MediaSender},
     display_service, ipc, privacy_mode, video_service, VERSION,
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -423,6 +421,13 @@ pub struct Connection {
     from_switch: bool,
     voice_call_request_timestamp: Option<NonZeroI64>,
     voice_calling: bool,
+    // Mic capture started because a video call is active, not a voice call.
+    video_call_audio: bool,
+    komi_active_voice_timestamp: Option<i64>,
+    komi_last_voice_timestamp: i64,
+    komi_microphone_owned: bool,
+    // KomiRemote: voice call started from this PC's cm, waiting for the controller.
+    komi_outgoing_voice_call: Option<(std::time::Instant, i64)>,
     options_in_login: Option<OptionMessage>,
     #[cfg(not(any(target_os = "ios")))]
     pressed_modifiers: HashSet<rdev::Key>,
@@ -629,6 +634,11 @@ impl Connection {
             audio_sender: None,
             voice_call_request_timestamp: None,
             voice_calling: false,
+            video_call_audio: false,
+            komi_active_voice_timestamp: None,
+            komi_last_voice_timestamp: 0,
+            komi_microphone_owned: false,
+            komi_outgoing_voice_call: None,
             options_in_login: None,
             #[cfg(not(any(target_os = "ios")))]
             pressed_modifiers: Default::default(),
@@ -979,10 +989,23 @@ impl Connection {
                         }
                         ipc::Data::CloseVoiceCall(_reason) => {
                             log::debug!("Close the voice call from the ipc.");
+                            let timestamp = conn.komi_voice_timestamp();
                             conn.close_voice_call().await;
                             // Notify the peer that we closed the voice call.
-                            let msg = new_voice_call_request(false);
-                            conn.send(msg).await;
+                            if let Some(timestamp) = timestamp {
+                                conn.send(crate::client::io_loop::komi_voice_cancel(timestamp)).await;
+                            }
+                        }
+                        ipc::Data::KomiRequestVoiceCall => {
+                            conn.komi_request_voice_call().await;
+                        }
+                        ipc::Data::KomiCameraInvite(enable_camera) => {
+                            conn.komi_camera_invite(enable_camera).await;
+                        }
+                        ipc::Data::KomiVideoCallCmd { cmd, enabled } => {
+                            conn.komi_video_bind();
+                            crate::komi_video_call::host_command(conn.inner.id(), &cmd, enabled);
+                            conn.komi_sync_video_audio().await;
                         }
                         ipc::Data::ReadJobInitResult { id, file_num, include_hidden, conn_id, result } => {
                             if conn_id == conn.inner.id() {
@@ -1072,6 +1095,9 @@ impl Connection {
                     }
                 }
                 Some((instant, value)) = rx_video.recv() => {
+                    if let Some(message::Union::KomiCallCameraFrame(frame)) = value.union.as_ref() {
+                        if !crate::komi_video_call::host_frame_live(id, frame) { continue; }
+                    }
                     if !conn.video_ack_required {
                         if let Some(message::Union::VideoFrame(vf)) = &value.union {
                             video_service::notify_video_frame_fetched(vf.display as usize, id, Some(instant.into()));
@@ -1083,6 +1109,10 @@ impl Connection {
                     }
                 },
                 Some((instant, value)) = rx.recv() => {
+                    // Also cover the camera sender's normal-channel fallback.
+                    if let Some(message::Union::KomiCallCameraFrame(frame)) = value.union.as_ref() {
+                        if !crate::komi_video_call::host_frame_live(id, frame) { continue; }
+                    }
                     let latency = instant.elapsed().as_millis() as i64;
                     #[allow(unused_mut)]
                     let mut msg = value;
@@ -1160,6 +1190,9 @@ impl Connection {
                     #[cfg(windows)]
                     conn.portable_check();
                     raii::AuthedConnID::check_wake_lock_on_setting_changed();
+                    conn.komi_check_outgoing_voice_call().await;
+                    crate::komi_video_call::host_tick(conn.inner.id());
+                    conn.komi_sync_video_audio().await;
                     if let Some((instant, minute)) = conn.auto_disconnect_timer.as_ref() {
                         if instant.elapsed().as_secs() > minute * 60 {
                             conn.send_close_reason_no_retry("Connection failed due to inactivity").await;
@@ -4035,18 +4068,44 @@ impl Connection {
                 }
                 Some(message::Union::VoiceCallRequest(request)) => {
                     if request.is_connect {
+                        if request.req_timestamp <= 0
+                            || self.voice_calling
+                            || self.voice_call_request_timestamp.is_some()
+                        {
+                            return true;
+                        }
+                        // KomiRemote: both sides called; keep the controller's call.
+                        self.komi_last_voice_timestamp = self
+                            .komi_last_voice_timestamp
+                            .max(request.req_timestamp);
+                        self.komi_outgoing_voice_call = None;
                         self.voice_call_request_timestamp = Some(
                             NonZeroI64::new(request.req_timestamp)
                                 .unwrap_or(NonZeroI64::new(get_time()).unwrap()),
                         );
                         // Notify the connection manager.
                         self.send_to_cm(Data::VoiceCallIncoming);
-                    } else {
+                    } else if self.komi_voice_timestamp() == Some(request.req_timestamp) {
                         self.close_voice_call().await;
                     }
                 }
-                Some(message::Union::VoiceCallResponse(_response)) => {
-                    // TODO: Maybe we can do a voice call from cm directly.
+                Some(message::Union::VoiceCallResponse(response)) => {
+                    // KomiRemote: the controller answered a call started from the cm.
+                    self.komi_handle_voice_call_response(response.accepted, response.req_timestamp)
+                        .await;
+                }
+                Some(message::Union::KomiVideoCall(call)) => {
+                    if self.is_remote() {
+                        self.komi_video_bind();
+                        crate::komi_video_call::host_on_call(self.inner.id(), &call);
+                        self.komi_sync_video_audio().await;
+                    }
+                }
+                Some(message::Union::KomiCallCameraFrame(frame)) => {
+                    if self.is_remote() {
+                        self.komi_video_bind();
+                        crate::komi_video_call::host_on_frame(self.inner.id(), frame);
+                    }
                 }
                 Some(message::Union::ScreenshotRequest(request)) => {
                     if let Some(tx) = self.inner.tx.clone() {
@@ -4823,10 +4882,9 @@ impl Connection {
         if let Some(ts) = self.voice_call_request_timestamp.take() {
             let msg = new_voice_call_response(ts.get(), accepted);
             if accepted {
-                crate::audio_service::set_voice_call_input_device(
-                    crate::get_default_sound_input(),
-                    false,
-                );
+                self.komi_cut_video_for_voice();
+                self.komi_active_voice_timestamp = Some(ts.get());
+                self.komi_acquire_microphone();
                 self.send_to_cm(Data::StartVoiceCall);
             } else {
                 self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
@@ -4847,12 +4905,209 @@ impl Connection {
         }
     }
 
+    // KomiRemote: start a voice call from this PC; the controller must accept it.
+    async fn komi_request_voice_call(&mut self) {
+        if !self.authorized
+            || self.voice_calling
+            || self.komi_outgoing_voice_call.is_some()
+            || self.voice_call_request_timestamp.is_some()
+        {
+            if !self.voice_calling && self.voice_call_request_timestamp.is_none() {
+                self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
+            }
+            return;
+        }
+        let mut msg = Message::new();
+        let Some(next_timestamp) = self.komi_last_voice_timestamp.checked_add(1) else {
+            return;
+        };
+        self.komi_last_voice_timestamp = get_time().max(next_timestamp);
+        msg.set_voice_call_request(VoiceCallRequest {
+            is_connect: true,
+            req_timestamp: self.komi_last_voice_timestamp,
+            ..Default::default()
+        });
+        let ts = msg.voice_call_request().req_timestamp;
+        self.komi_outgoing_voice_call = Some((std::time::Instant::now(), ts));
+        self.send_to_cm(Data::KomiVoiceCallOutgoing);
+        self.send(msg).await;
+    }
+
+    // KomiRemote: give up a call from this PC that nobody answered within 30 s.
+    async fn komi_check_outgoing_voice_call(&mut self) {
+        if let Some((instant, timestamp)) = self.komi_outgoing_voice_call {
+            if instant.elapsed() >= std::time::Duration::from_secs(30) {
+                self.komi_outgoing_voice_call = None;
+                self.send_to_cm(Data::CloseVoiceCall("timeout".to_owned()));
+                self.send(crate::client::io_loop::komi_voice_cancel(timestamp))
+                    .await;
+            }
+        }
+    }
+
+    fn komi_cut_video_for_voice(&mut self) {
+        // Transfer ownership before the video teardown can release the microphone.
+        self.voice_calling = true;
+        if !crate::komi_video_call::host_video_busy(self.inner.id()) {
+            return;
+        }
+        self.komi_video_bind();
+        crate::komi_video_call::host_command(self.inner.id(), "hangup", false);
+        self.komi_stop_video_audio();
+    }
+
+    fn komi_voice_timestamp(&self) -> Option<i64> {
+        self.komi_active_voice_timestamp
+            .or(self.voice_call_request_timestamp.map(NonZeroI64::get))
+            .or(self
+                .komi_outgoing_voice_call
+                .map(|(_, timestamp)| timestamp))
+    }
+
+    fn komi_acquire_microphone(&mut self) {
+        if !self.komi_microphone_owned {
+            crate::client::io_loop::komi_acquire_microphone();
+            self.komi_microphone_owned = true;
+        }
+    }
+
+    fn komi_release_microphone(&mut self) {
+        if self.komi_microphone_owned && !self.voice_calling && !self.video_call_audio {
+            self.komi_microphone_owned = false;
+            crate::client::io_loop::komi_release_microphone();
+        }
+    }
+
+    fn komi_stop_video_audio(&mut self) {
+        if !self.video_call_audio {
+            return;
+        }
+        self.video_call_audio = false;
+        self.komi_release_microphone();
+        if let Some(s) = self.server.upgrade() {
+            s.write().unwrap().subscribe(
+                super::audio_service::NAME,
+                self.inner.clone(),
+                self.voice_calling || self.audio_enabled(),
+            );
+        }
+    }
+
+    async fn komi_sync_video_audio(&mut self) {
+        let active = crate::komi_video_call::host_active_video(self.inner.id());
+        if active {
+            if !self.video_call_audio {
+                let reuse_microphone = self.voice_calling;
+                let voice_live = self.voice_calling
+                    || self.voice_call_request_timestamp.is_some()
+                    || self.komi_outgoing_voice_call.is_some();
+                self.video_call_audio = true;
+                self.voice_calling = false;
+                self.komi_active_voice_timestamp = None;
+                self.voice_call_request_timestamp = None;
+                self.komi_outgoing_voice_call = None;
+                if voice_live {
+                    self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
+                }
+                // Video acceptance is the peer's cancellation boundary too. Do not
+                // enqueue a stale vocal cancel, or restart a transferred microphone.
+                if !reuse_microphone {
+                    self.komi_acquire_microphone();
+                }
+                if let Some(s) = self.server.upgrade() {
+                    s.write().unwrap().subscribe(
+                        super::audio_service::NAME,
+                        self.inner.clone(),
+                        true,
+                    );
+                }
+            }
+        } else {
+            self.komi_stop_video_audio();
+        }
+    }
+
+    async fn komi_handle_voice_call_response(&mut self, accepted: bool, req_timestamp: i64) {
+        let Some((_, ts)) = self.komi_outgoing_voice_call else {
+            return;
+        };
+        if ts != req_timestamp {
+            log::warn!("Voice call answer does not match the call from this PC.");
+            return;
+        }
+        self.komi_outgoing_voice_call = None;
+        if accepted {
+            self.komi_cut_video_for_voice();
+            self.komi_active_voice_timestamp = Some(ts);
+            self.komi_acquire_microphone();
+            self.send_to_cm(Data::StartVoiceCall);
+            self.voice_calling = true;
+            if self.is_authed_view_camera_conn() {
+                if let Some(s) = self.server.upgrade() {
+                    s.write().unwrap().subscribe(
+                        super::audio_service::NAME,
+                        self.inner.clone(),
+                        self.audio_enabled(),
+                    );
+                }
+            }
+        } else {
+            self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
+        }
+    }
+
+    fn komi_video_bind(&self) {
+        if !self.authorized || !self.is_remote() {
+            return;
+        }
+        let tx = self.inner.tx.clone();
+        let tx_v = self.inner.tx_video.clone().or_else(|| self.inner.tx.clone());
+        let cm = self.tx_to_cm.clone();
+        let signal = std::sync::Arc::new(move |msg: Message| {
+            if let Some(tx) = &tx {
+                let _ = tx.send((hbb_common::tokio::time::Instant::now(), std::sync::Arc::new(msg)));
+            }
+        });
+        let video = std::sync::Arc::new(move |msg: Message| {
+            if let Some(tx) = &tx_v {
+                let _ = tx.send((hbb_common::tokio::time::Instant::now(), std::sync::Arc::new(msg)));
+            }
+        });
+        crate::komi_video_call::host_bind(self.inner.id(), signal, video, cm);
+    }
+}
+
+impl Connection {
+    async fn komi_camera_invite(&mut self, enable_camera: bool) {
+        if !self.authorized {
+            return;
+        }
+        if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.control_permissions) {
+            if enable_camera {
+                log::info!("Camera option turned on from the connection manager.");
+                Config::set_option(keys::OPTION_ENABLE_CAMERA.to_owned(), "Y".to_owned());
+            }
+            if !Self::permission(keys::OPTION_ENABLE_CAMERA, &self.control_permissions) {
+                self.send_to_cm(Data::KomiCameraDisabled);
+                return;
+            }
+        }
+        let mut misc = Misc::new();
+        misc.set_komi_camera_invite(true);
+        let mut msg = Message::new();
+        msg.set_misc(misc);
+        self.send(msg).await;
+    }
+
     pub async fn close_voice_call(&mut self) {
-        crate::audio_service::set_voice_call_input_device(None, true);
+        self.komi_outgoing_voice_call = None;
+        self.voice_call_request_timestamp = None;
+        self.komi_active_voice_timestamp = None;
         // Notify the connection manager that the voice call has been closed.
         self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
         self.voice_calling = false;
-        if self.is_authed_view_camera_conn() {
+        self.komi_release_microphone();
+        if self.is_authed_view_camera_conn() && !self.video_call_audio {
             if let Some(s) = self.server.upgrade() {
                 s.write()
                     .unwrap()
@@ -5244,16 +5499,10 @@ impl Connection {
             return;
         }
         self.closed = true;
-        // If voice A,B -> C, and A,B has voice call
-        // B disconnects, C will reset the voice call input.
-        //
-        // It may be acceptable, because it's not a common case,
-        // and it's immediately known when the input device changes.
-        // C can change the input device manually in cm interface.
-        //
-        // We can add a (Vec<conn_id>, input device) to avoid this.
-        // But it's not necessary now and we have to consider two audio services(client, server).
-        crate::audio_service::set_voice_call_input_device(None, true);
+        crate::komi_video_call::host_stop(self.inner.id());
+        self.voice_calling = false;
+        self.video_call_audio = false;
+        self.komi_release_microphone();
         log::info!("#{} Connection closed: {}", self.inner.id(), reason);
         if lock
             && self.lock_after_session_end
@@ -6426,6 +6675,28 @@ async fn start_ipc(
                             compressed}) = data {
                                 stream.send(&Data::FS(ipc::FS::WriteBlock{id, file_num, data: Bytes::new(), compressed})).await?;
                                 stream.send_raw(data).await?;
+                        } else if let ipc::Data::KomiCallCameraJpeg {
+                            conn_id,
+                            call_id,
+                            stream_id,
+                            seq,
+                            width,
+                            height,
+                            jpeg,
+                        } = data
+                        {
+                            stream
+                                .send(&ipc::Data::KomiCallCameraJpeg {
+                                    conn_id,
+                                    call_id,
+                                    stream_id,
+                                    seq,
+                                    width,
+                                    height,
+                                    jpeg: bytes::Bytes::new(),
+                                })
+                                .await?;
+                            stream.send_raw(jpeg).await?;
                         } else {
                             stream.send(&data).await?;
                         }

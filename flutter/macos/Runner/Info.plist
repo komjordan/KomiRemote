@@ -41,6 +41,8 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<key>NSCameraUsageDescription</key>
+	<string>KomiRemote utilise votre caméra pour la prévisualisation locale et pour transmettre votre image lorsque vous acceptez un appel vidéo ou choisissez de partager votre caméra.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>KomiRemote utilise le micro uniquement pour transmettre le son pendant une session de bureau à distance.</string>
 	<key>NSAppleEventsUsageDescription</key>

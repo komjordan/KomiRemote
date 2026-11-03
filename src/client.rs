@@ -5013,10 +5013,18 @@ pub enum Data {
     ElevateWithLogon(String, String),
     NewVoiceCall,
     CloseVoiceCall,
+    // KomiRemote: answer to a voice call started by the controlled PC.
+    KomiAnswerVoiceCall(bool),
     ContinueInsecureConnection,
     ResetDecoder(Option<usize>),
     RenameFile((i32, String, String, bool)),
     TakeScreenshot((i32, String)),
+    // KomiRemote v22: video-call command from the session UI.
+    KomiVideoCall(String),
+    // phase, local camera, remote camera, call id.
+    KomiVideoCallState(String, bool, bool, String),
+    // path, seq, stream id, width, height.
+    KomiVideoPreview(String, u32, u32, u32, u32),
 }
 
 pub async fn confirm_insecure_connection(

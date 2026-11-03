@@ -23,6 +23,7 @@ import '../../common/shared_state.dart';
 import './popup_menu.dart';
 import './kb_layout_type_chooser.dart';
 import './remote_toolbar_compact.dart';
+import './komi_video_call_window.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
 
@@ -2914,7 +2915,7 @@ class _ChatMenuState extends State<_ChatMenu> {
           ffi: widget.ffi,
           color: _ToolbarTheme.blueColor,
           hoverColor: _ToolbarTheme.hoverBlueColor,
-          menuChildrenGetter: (_) => [textChat(), voiceCall()]);
+          menuChildrenGetter: (_) => [textChat(), voiceCall(), videoCall(), videoCamera()]);
     }
   }
 
@@ -2957,6 +2958,34 @@ class _ChatMenuState extends State<_ChatMenu> {
           bind.sessionRequestVoiceCall(sessionId: widget.ffi.sessionId),
     );
   }
+
+  videoCall() {
+    final call = KomiVideoCallUi.forSession(widget.ffi.sessionId);
+    return AnimatedBuilder(
+      animation: call,
+      builder: (context, _) => MenuButton(
+        child: Text(call.showingCamera
+            ? 'Appel vidéo'
+            : call.phase == 'outgoing'
+                ? 'Annuler l’appel vidéo'
+                : call.phase == 'active'
+                    ? 'Raccrocher'
+                    : 'Appel vidéo'),
+        ffi: widget.ffi,
+        onPressed: () => call.command(
+            call.inCall && !call.showingCamera ? 'hangup' : 'request'),
+      ),
+    );
+  }
+
+  videoCamera() {
+    final call = KomiVideoCallUi.forSession(widget.ffi.sessionId);
+    return AnimatedBuilder(animation: call, builder: (context, _) => MenuButton(
+      child: Text(call.showingCamera ? 'Arrêter ma caméra' : 'Montrer ma caméra'),
+      ffi: widget.ffi,
+      onPressed: () => call.command(call.showingCamera ? 'hangup' : 'show-mine'),
+    ));
+  }
 }
 
 class _VoiceCallMenu extends StatelessWidget {
@@ -2968,8 +2997,23 @@ class _VoiceCallMenu extends StatelessWidget {
     required this.ffi,
   }) : super(key: key);
 
+  void _hangup() {
+    final call = KomiVideoCallUi.forSession(ffi.sessionId);
+    // A new voice request can ring while video is still active. Cancel that
+    // request first, rather than hanging up the video behind the red button.
+    if (ffi.chatModel.voiceCallStatus.value ==
+        VoiceCallStatus.waitingForResponse) {
+      bind.sessionCloseVoiceCall(sessionId: ffi.sessionId);
+    } else if (call.inCall && !call.showingCamera) {
+      call.command('hangup');
+    } else {
+      bind.sessionCloseVoiceCall(sessionId: ffi.sessionId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final call = KomiVideoCallUi.forSession(ffi.sessionId);
     menuChildrenGetter(_IconSubmenuButtonState state) {
       final audioInput = AudioInput(
         builder: (devices, currentDevice, setDevice) {
@@ -3000,8 +3044,8 @@ class _VoiceCallMenu extends StatelessWidget {
         audioInput,
         Divider(),
         MenuButton(
-          child: Text(translate('End call')),
-          onPressed: () => bind.sessionCloseVoiceCall(sessionId: ffi.sessionId),
+          child: const Text('Raccrocher'),
+          onPressed: _hangup,
           ffi: ffi,
         ),
       ];
@@ -3009,21 +3053,31 @@ class _VoiceCallMenu extends StatelessWidget {
 
     return Obx(
       () {
-        switch (ffi.chatModel.voiceCallStatus.value) {
-          case VoiceCallStatus.waitingForResponse:
-            return buildCallWaiting(context);
-          case VoiceCallStatus.connected:
-            return _IconSubmenuButton(
-              tooltip: 'Voice call',
-              svg: 'assets/voice_call.svg',
-              color: _ToolbarTheme.blueColor,
-              hoverColor: _ToolbarTheme.hoverBlueColor,
-              menuChildrenGetter: menuChildrenGetter,
-              ffi: ffi,
-            );
-          default:
+        // GetX must observe this read here, not in AnimatedBuilder's later
+        // callback. Video changes are observed separately by the builder.
+        final voiceStatus = ffi.chatModel.voiceCallStatus.value;
+        return AnimatedBuilder(
+          animation: call,
+          builder: (context, _) {
+            final videoCall = call.inCall && !call.showingCamera;
+            if (voiceStatus == VoiceCallStatus.waitingForResponse ||
+                (videoCall && call.phase != 'active')) {
+              return buildCallWaiting(context);
+            }
+            if (voiceStatus == VoiceCallStatus.connected ||
+                (videoCall && call.phase == 'active')) {
+              return _IconSubmenuButton(
+                tooltip: 'Voice call',
+                svg: 'assets/voice_call.svg',
+                color: _ToolbarTheme.blueColor,
+                hoverColor: _ToolbarTheme.hoverBlueColor,
+                menuChildrenGetter: menuChildrenGetter,
+                ffi: ffi,
+              );
+            }
             return Offstage();
-        }
+          },
+        );
       },
     );
   }
@@ -3032,7 +3086,7 @@ class _VoiceCallMenu extends StatelessWidget {
     return _IconMenuButton(
       assetName: "assets/call_wait.svg",
       tooltip: "Waiting",
-      onPressed: () => bind.sessionCloseVoiceCall(sessionId: ffi.sessionId),
+      onPressed: _hangup,
       color: _ToolbarTheme.redColor,
       hoverColor: _ToolbarTheme.hoverRedColor,
     );

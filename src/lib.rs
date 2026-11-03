@@ -48,6 +48,7 @@ mod custom_server;
 mod komi_config;
 pub mod komi_device_name;
 pub mod komi_cursor_tag;
+mod komi_video_call;
 mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;

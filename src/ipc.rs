@@ -402,6 +402,13 @@ pub enum Data {
     StartVoiceCall,
     VoiceCallResponse(bool),
     CloseVoiceCall(String),
+    // KomiRemote: voice call started by the controlled PC (cm -> connection), its
+    // waiting state (connection -> cm), the camera invite (cm -> connection; true once
+    // the user agreed to turn the camera option on) and its "camera off" answer.
+    KomiRequestVoiceCall,
+    KomiVoiceCallOutgoing,
+    KomiCameraInvite(bool),
+    KomiCameraDisabled,
     #[cfg(windows)]
     SyncWinCpuUsage(Option<f64>),
     FileTransferLog((String, String)),
@@ -579,6 +586,30 @@ pub enum Data {
         /// serializes, so new-to-new is unaffected.
         #[serde(default = "legacy_hot_measured")]
         hot_measured: bool,
+    },
+    /// KomiRemote v22: video-call phase, service to CM. No image bytes.
+    KomiVideoCallState {
+        phase: String,
+        reason: String,
+        local_camera: bool,
+        remote_camera: bool,
+        call_id: String,
+    },
+    /// KomiRemote v22: JPEG thumbnail. The bytes follow in send_raw, not JSON.
+    KomiCallCameraJpeg {
+        conn_id: i32,
+        call_id: String,
+        stream_id: u32,
+        seq: u32,
+        width: u32,
+        height: u32,
+        #[serde(skip)]
+        jpeg: bytes::Bytes,
+    },
+    /// CM to service: request, answer, hangup or local camera toggle.
+    KomiVideoCallCmd {
+        cmd: String,
+        enabled: bool,
     },
 }
 

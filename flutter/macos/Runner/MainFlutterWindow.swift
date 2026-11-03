@@ -235,6 +235,36 @@ class MainFlutterWindow: NSWindow {
                         }
                     })
                     break
+                // Camera permission is separate from microphone and screen capture.
+                // This channel is installed for the main and child Flutter engines.
+                // Never open a device here: the caller must revalidate its live
+                // call/session after the asynchronous permission result.
+                case "canRecordCamera":
+                    DispatchQueue.main.async {
+                        switch AVCaptureDevice.authorizationStatus(for: .video) {
+                        case .authorized: result(1)
+                        case .notDetermined: result(0)
+                        case .denied: result(-1)
+                        case .restricted: result(-2)
+                        @unknown default: result(-2)
+                        }
+                    }
+                case "requestRecordCamera":
+                    DispatchQueue.main.async {
+                        switch AVCaptureDevice.authorizationStatus(for: .video) {
+                        case .authorized:
+                            result(true)
+                        case .notDetermined:
+                            AVCaptureDevice.requestAccess(for: .video) { granted in
+                                DispatchQueue.main.async { result(granted) }
+                            }
+                        case .denied, .restricted:
+                            // Only the user/system policy can change this in Settings.
+                            result(false)
+                        @unknown default:
+                            result(false)
+                        }
+                    }
                 case "bumpMouse":
                     var dx = 0
                     var dy = 0

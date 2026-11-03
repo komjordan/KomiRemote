@@ -24,6 +24,7 @@ import 'package:flutter_hbb/models/printer_model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_hbb/models/user_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
+import 'package:flutter_hbb/desktop/widgets/komi_video_call_window.dart';
 import 'package:flutter_hbb/models/desktop_render_texture.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
@@ -420,13 +421,58 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'on_voice_call_started') {
         // Voice call is connected.
         parent.target?.chatModel.onVoiceCallStarted();
+        _komiDismissIncomingVoiceCall(sessionId);
       } else if (name == 'on_voice_call_closed') {
         // Voice call is closed with reason.
         final reason = evt['reason'].toString();
         parent.target?.chatModel.onVoiceCallClosed(reason);
+        _komiDismissIncomingVoiceCall(sessionId);
       } else if (name == 'on_voice_call_incoming') {
         // Voice call is requested by the peer.
         parent.target?.chatModel.onVoiceCallIncoming();
+        if (parent.target?.chatModel.isConnManager != true) {
+          _komiShowIncomingVoiceCall(sessionId);
+        }
+      } else if (name == 'komi_camera_invite') {
+        // A camera invite and a video call cannot run together.
+        KomiVideoCallUi.forSession(sessionId).command('hangup');
+        _komiShowCameraInvite(sessionId, peerId);
+
+      } else if (name == 'komi_video_call') {
+        KomiVideoCallUi.forSession(sessionId).apply(
+            evt['phase']?.toString() ?? 'idle',
+            evt['local'] == '1',
+            evt['remote'] == '1',
+            nextCallId: evt['call_id']?.toString() ?? '',
+            nextMode: (evt['call_id']?.toString() ?? '').startsWith('cam:')
+                ? 'show-camera'
+                : 'video');
+        if (evt['phase'] == 'incoming' &&
+            parent.target?.chatModel.isConnManager != true) {
+          _komiShowIncomingVideoCall(sessionId,
+              showCamera:
+                  (evt['call_id']?.toString() ?? '').startsWith('cam:'));
+        }
+        if (evt['phase'] == 'outgoing' || evt['phase'] == 'active') {
+          parent.target?.dialogManager
+              .dismissByTag('$sessionId-komi-camera-invite');
+        }
+        if (evt['phase'] == 'active' ||
+            evt['phase'] == 'ended' ||
+            evt['phase'] == 'idle') {
+          parent.target?.dialogManager
+              .dismissByTag('$sessionId-komi-video-call');
+        }
+      } else if (name == 'komi_video_frame') {
+        final path = evt['path']?.toString() ?? '';
+        final seq = int.tryParse(evt['seq']?.toString() ?? '') ?? 0;
+        final stream = int.tryParse(evt['stream']?.toString() ?? '') ?? 2;
+        final id = int.tryParse(evt['id']?.toString() ?? '');
+        if (id != null) {
+          parent.target?.serverModel.komiVideoFrame(id, path, seq, stream);
+        } else {
+          KomiVideoCallUi.forSession(sessionId).frame(path, seq, stream);
+        }
       } else if (name == 'update_voice_call_state') {
         parent.target?.serverModel.updateVoiceCallState(evt);
       } else if (name == 'fingerprint') {
@@ -543,6 +589,93 @@ class FfiModel with ChangeNotifier {
         tag: '$msgBoxType-$msgBoxTitle-$msgBoxTitle',
       );
     }
+  }
+
+  // KomiRemote: the controlled PC calls this controller.
+  void _komiShowIncomingVoiceCall(SessionID sessionId) {
+    final dialogManager = parent.target?.dialogManager;
+    if (dialogManager == null) return;
+    dialogManager.show(tag: '$sessionId-komi-voice-call',
+        (setState, close, context) {
+      Future<void> answer(bool accept) async {
+        if (accept && !await komiEnsureMediaPermission(microphone: true)) return;
+        if (parent.target?.chatModel.voiceCallStatus.value != VoiceCallStatus.incoming) return;
+        bind.sessionGetCommonSync(
+            sessionId: sessionId,
+            key: 'komi_answer_voice_call',
+            param: accept ? '1' : '0');
+        close();
+      }
+
+      return CustomAlertDialog(
+        title: Text(translate('Voice call')),
+        content: Text(translate('komi-host-calling-tip')),
+        actions: [
+          dialogButton('Rejeter', onPressed: () => answer(false),
+              buttonStyle: ElevatedButton.styleFrom(backgroundColor: Colors.red,
+                  foregroundColor: Colors.white)),
+          dialogButton('Accept', onPressed: () => answer(true)),
+        ],
+        onSubmit: () => answer(true),
+        onCancel: () => answer(false),
+      );
+    });
+  }
+
+  void _komiDismissIncomingVoiceCall(SessionID sessionId) {
+    parent.target?.dialogManager
+        .dismissByTag('$sessionId-komi-voice-call');
+  }
+
+  void _komiShowIncomingVideoCall(SessionID sessionId, {bool showCamera = false}) {
+    final dialogManager = parent.target?.dialogManager;
+    if (dialogManager == null) return;
+    dialogManager.show(tag: '$sessionId-komi-video-call',
+        (setState, close, context) {
+      Future<void> answer(bool accept) async {
+        final sent = await KomiVideoCallUi.forSession(sessionId).command(accept ? 'accept' : 'refuse');
+        if (sent) close();
+      }
+
+      return CustomAlertDialog(
+        title: Text('${showCamera ? 'Caméra' : 'Appel vidéo'} de ${pi.hostname.isNotEmpty ? pi.hostname : (parent.target?.id ?? 'un PC')}'),
+        content: Text(showCamera
+            ? 'Le pair veut vous montrer sa caméra. Accepter pour la voir.'
+            : 'Accepter cet appel activera votre caméra et votre microphone.'),
+        actions: [
+          dialogButton('Rejeter', onPressed: () => answer(false),
+              buttonStyle: ElevatedButton.styleFrom(backgroundColor: Colors.red,
+                  foregroundColor: Colors.white)),
+          dialogButton('Accept', onPressed: () => answer(true)),
+        ],
+        onSubmit: () => answer(true),
+        onCancel: () => answer(false),
+      );
+    });
+  }
+
+  void _komiShowCameraInvite(SessionID sessionId, String peerId) {
+    final dialogManager = parent.target?.dialogManager;
+    if (dialogManager == null) return;
+    dialogManager.show(tag: '$sessionId-komi-camera-invite',
+        (setState, close, context) {
+      submit() {
+        close();
+        final connToken = bind.sessionGetConnToken(sessionId: sessionId);
+        connect(context, peerId, isViewCamera: true, connToken: connToken);
+      }
+
+      return CustomAlertDialog(
+        title: Text(translate('View camera')),
+        content: Text(translate('komi-host-camera-invite-tip')),
+        actions: [
+          dialogButton('Refuse', onPressed: close, isOutline: true),
+          dialogButton('Accept', onPressed: submit),
+        ],
+        onSubmit: submit,
+        onCancel: close,
+      );
+    });
   }
 
   _handlePrinterRequest(
@@ -4435,6 +4568,7 @@ class FFI {
   /// Close the remote session.
   Future<void> close({bool closeSession = true}) async {
     closed = true;
+    await KomiVideoCallUi.releaseSession(sessionId);
     if (isWeb) {
       platformFFI.clearVideoFrameCallback();
     }

@@ -185,7 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' flutter/pubspec.yaml | tr '+' '-')"
-          test "$version" = "1.5.1-71"
+          test "$version" = "1.5.1-85"
           dmg="KomiRemote-${version}-${{ matrix.job.arch }}.dmg"
           app=flutter/build/macos/Build/Products/Release/KomiRemote.app
           CREATE_DMG="$(readlink -f "$(command -v create-dmg)")"
@@ -210,7 +210,7 @@ jobs:
           cp LICENCE komiremote-macos-output/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: KomiRemote-1.5.1-71-${{ matrix.job.arch }}-unsigned-${{ github.sha }}
+          name: KomiRemote-1.5.1-85-${{ matrix.job.arch }}-unsigned-${{ github.sha }}
           path: komiremote-macos-output/
           retention-days: 7
           if-no-files-found: error

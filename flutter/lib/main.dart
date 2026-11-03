@@ -30,6 +30,7 @@ import 'mobile/pages/server_page.dart';
 import 'mobile/widgets/deploy_dialog.dart';
 import 'models/platform_model.dart';
 import 'desktop/komi_branding.dart';
+import 'desktop/widgets/komi_video_call_window.dart';
 
 /// Basic window and launch properties.
 int? kWindowId;
@@ -57,6 +58,12 @@ Future<void> main(List<String> args) async {
     final argument = args[2].isEmpty
         ? <String, dynamic>{}
         : jsonDecode(args[2]) as Map<String, dynamic>;
+    // Separate rendering engine, not ViewCamera and not a new remote session.
+    // Dispatch before the legacy numeric WindowType switch; preserve its ABI.
+    if (argument['kind'] == KomiVideoCallUi.windowKind) {
+      await runKomiVideoWindow(argument, kWindowId!);
+      return;
+    }
     int type = argument['type'] ?? -1;
     // to-do: No need to parse window id ?
     // Because stateGlobal.windowId is a global value.
@@ -287,6 +294,7 @@ void runMultiWindow(
 
 void runConnectionManagerScreen() async {
   await initEnv(kAppTypeConnectionManager);
+  rustDeskWinManager.setMethodHandler((call, fromWindowId) async => null);
   _runApp(
     '',
     const DesktopServerPage(),

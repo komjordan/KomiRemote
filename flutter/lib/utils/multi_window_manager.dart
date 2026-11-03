@@ -8,6 +8,7 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/main.dart';
 import 'package:flutter_hbb/models/input_model.dart';
+import 'package:flutter_hbb/desktop/widgets/komi_video_call_window.dart';
 
 /// must keep the order
 // ignore: constant_identifier_names
@@ -446,7 +447,12 @@ class RustDeskMultiWindowManager {
 
   void setMethodHandler(
       Future<dynamic> Function(MethodCall call, int fromWindowId)? handler) {
-    DesktopMultiWindow.setMethodHandler(handler);
+    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      if (call.method.startsWith(KomiVideoCallUi.rpcPrefix)) {
+        return KomiVideoCallUi.handleRpc(call, fromWindowId);
+      }
+      return handler == null ? null : await handler(call, fromWindowId);
+    });
   }
 
   Future<void> closeAllSubWindows() async {
