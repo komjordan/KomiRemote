@@ -32,13 +32,15 @@
 KomiRemote reprend le moteur de bureau à distance de RustDesk OSS (base 1.5.0) et y ajoute une interface simplifiée en français pour un usage personnel sous Windows :
 
 - identité visuelle KomiRemote (icônes, logos, nom d’application `KomiRemote` séparé de RustDesk) ;
-- interface épurée : barre de session repliable, disponible en mode minimal ou complet, textes et menus revus en français ;
+- barre de session repliable, en mode minimal ou complet ;
+- appel vidéo depuis une session déjà connectée ;
+- partage de la caméra du contrôleur ;
 - approbation manuelle des connexions entrantes par défaut ;
 - enregistrement de session avec dialogue « enregistrement sauvegardé » ;
 - nom de connexion personnalisé : un appareil peut être joint par son nom en complément de son ID numérique ;
 - page À propos avec licence, code source et mentions légales ;
 - notification de mise à jour basée sur `https://komjordan.fr/komi-version.json` (aucun téléchargement automatique) ;
-- les fonctions présentées (connexion, nom personnalisé, approbation, enregistrement et barre de session) s’utilisent sans compte.
+- les fonctions présentées s’utilisent sans compte.
 
 ## Téléchargement
 
@@ -54,17 +56,15 @@ L’exécutable n’est pas signé : Windows SmartScreen peut afficher un averti
 
 ## Code source correspondant
 
-La version portable publiée correspond au tag [`v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71). Les builds de test ci-dessous sont distinctes de cette version publiée ; leurs évolutions ne sont pas encore toutes intégrées dans `main`.
+La version portable publiée correspond au tag [`v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71). `main` contient les évolutions suivantes, dont les appels vidéo et les pastilles de session.
 
 ## État des plateformes
 
-- **Windows — build de test v29 :** validée par le propriétaire. Cette validation ne change pas le tag de la version publiée ci-dessus.
-- **macOS — build de test 1.5.1-85 :** [compilation GitHub Actions réussie, Apple Silicon et Intel](https://github.com/komjordan/KomiRemote/actions/runs/41680507345). Les appels audio/vidéo restent à valider en conditions réelles sur Mac. Les paquets de test sont signés ad hoc, sans signature Developer ID ni notarisation ; ce n’est pas une nouvelle release publique.
-- **Linux et Android :** développements en cours, non présentés ici comme des versions publiées ou validées.
+- **Windows :** le portable publié reste le tag ci-dessus. Les captures récentes montrent la barre de session et l’appel vidéo.
+- **macOS :** build de test 1.5.1+85, [Apple Silicon et Intel](https://github.com/komjordan/KomiRemote/actions/runs/41680507345). Signature ad hoc, sans Developer ID ni notarisation.
+- **Linux, Android et iOS :** développements en cours.
 
 ## Captures
-
-Les captures historiques proviennent de KomiRemote v1.5.1-komi.71 ; la demande d’appel vidéo et les pastilles hôte montrent les évolutions Windows approuvées le 3 novembre 2026. Les IDs de connexion sont floutés ; les noms d’appareils restent visibles.
 
 ### Accueil
 
@@ -75,8 +75,6 @@ Les captures historiques proviennent de KomiRemote v1.5.1-komi.71 ; la demande d
 ![À propos de KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-a-propos.png)
 
 ### Demande de connexion et appel vidéo entrant
-
-Deux demandes distinctes, présentées côte à côte : la connexion au bureau, puis l’appel vidéo depuis une session déjà connectée.
 
 <table>
   <tr>
@@ -125,8 +123,6 @@ Le nom choisi complète l’ID numérique et peut être vérifié, appliqué ou 
   <img src="docs/komiremote/screenshots/2026-11-03/pastilles-depliees.png" alt="Hôte : pastilles dépliées Contrôle, Appel vocal avec durée et Caméra">
 </p>
 
-La capture hôte montre les pastilles **Contrôle**, **Appel** (vocal) et **Caméra**. Elle ne représente pas un appel vidéo actif : le partage de caméra et l’appel vocal ne sont pas renommés en appel vidéo.
-
 **Contrôleur — barre complète**
 
 <p align="center">
@@ -153,7 +149,7 @@ git checkout 1e6ef555c89d41d11a4607edae7bc05752b869b9
 git submodule update --init --recursive
 ```
 
-Suivre ensuite la recette complète du [workflow macOS de cette révision](https://github.com/komjordan/KomiRemote/blob/1e6ef555c89d41d11a4607edae7bc05752b869b9/.github/workflows/komiremote-macos-test.yml) : génération du bridge, dépendances natives épinglées, Flutter 3.24.5, Rust 1.81, compilation et signature ad hoc. Les étapes et options diffèrent entre Apple Silicon et Intel ; une simple commande Flutter ne remplace pas cette préparation. Après intégration revue par l’intégrateur, `main` pourra servir de base ; ce README ne prétend pas que cette intégration est déjà faite.
+Suivre ensuite la recette du [workflow macOS](https://github.com/komjordan/KomiRemote/blob/1e6ef555c89d41d11a4607edae7bc05752b869b9/.github/workflows/komiremote-macos-test.yml) : bridge, dépendances natives, Flutter 3.24.5, Rust 1.81, puis compilation et signature ad hoc. Apple Silicon et Intel n’utilisent pas les mêmes options.
 
 ## Licence et copyright
 
