@@ -1435,6 +1435,15 @@ fn capture_loop(
             break;
         };
         let yuvfmt = enc.yuvfmt();
+        #[cfg(target_os = "macos")]
+        let pb = match scrap::PixelBuffer::from_camera_rgba(&scaled, dw as usize, dh as usize) {
+            Ok(pb) => pb,
+            Err(err) => {
+                log::debug!("Komi video call invalid camera frame: {err}");
+                continue;
+            }
+        };
+        #[cfg(not(target_os = "macos"))]
         let pb = scrap::PixelBuffer::new(&scaled, scrap::Pixfmt::RGBA, dw as usize, dh as usize);
         let owned = scrap::Frame::PixelBuffer(pb);
         let input = match owned.to(yuvfmt, &mut yuv, &mut mid) {
