@@ -428,6 +428,11 @@ pub struct Connection {
     komi_microphone_owned: bool,
     // KomiRemote: voice call started from this PC's cm, waiting for the controller.
     komi_outgoing_voice_call: Option<(std::time::Instant, i64)>,
+    // KomiRemote host priority: last state sent to the peer, buttons we let through,
+    // and when the host-side cursor overlay was last fed.
+    komi_host_priority_sent: bool,
+    komi_btns_forwarded: i32,
+    komi_overlay_last: Option<std::time::Instant>,
     options_in_login: Option<OptionMessage>,
     #[cfg(not(any(target_os = "ios")))]
     pressed_modifiers: HashSet<rdev::Key>,
@@ -471,6 +476,9 @@ pub struct Connection {
 
 impl ConnInner {
     pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
+        // Install the local-input hooks before the first controller event arrives.
+        #[cfg(target_os = "windows")]
+        let _ = crate::komi_host_priority::active();
         Self { id, tx, tx_video }
     }
 }
@@ -639,6 +647,9 @@ impl Connection {
             komi_last_voice_timestamp: 0,
             komi_microphone_owned: false,
             komi_outgoing_voice_call: None,
+            komi_host_priority_sent: false,
+            komi_btns_forwarded: 0,
+            komi_overlay_last: None,
             options_in_login: None,
             #[cfg(not(any(target_os = "ios")))]
             pressed_modifiers: Default::default(),
@@ -1193,6 +1204,8 @@ impl Connection {
                     conn.komi_check_outgoing_voice_call().await;
                     crate::komi_video_call::host_tick(conn.inner.id());
                     conn.komi_sync_video_audio().await;
+                    #[cfg(target_os = "windows")]
+                    conn.komi_host_priority_tick().await;
                     if let Some((instant, minute)) = conn.auto_disconnect_timer.as_ref() {
                         if instant.elapsed().as_secs() > minute * 60 {
                             conn.send_close_reason_no_retry("Connection failed due to inactivity").await;
@@ -3030,6 +3043,21 @@ impl Connection {
                 crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon();
 
+            // The host already chose to share the camera, and this peer accepted.
+            // Do not ask the host to accept or cancel the view-camera login again.
+            #[cfg(target_os = "windows")]
+            if self.view_camera && komi_take_camera_share(&lr.my_id) {
+                log::info!(
+                    "KomiRemote: view-camera login pre-approved for {}",
+                    lr.my_id
+                );
+                if !self.send_logon_response_and_keep_alive().await {
+                    return false;
+                }
+                self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
+                return true;
+            }
+
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
             {
@@ -3194,6 +3222,11 @@ impl Connection {
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
                         log::debug!("call_main_service_pointer_input fail:{}", e);
                     }
+                    #[cfg(target_os = "windows")]
+                    if self.peer_keyboard_enabled() && self.komi_host_priority_mouse(&me).await {
+                        self.update_auto_disconnect_timer();
+                        return true;
+                    }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     if self.peer_keyboard_enabled() {
                         if is_left_up(&me) {
@@ -3211,9 +3244,11 @@ impl Connection {
                             self.lr.my_name.clone(),
                             self.peer_argb,
                             true,
-                            self.show_my_cursor,
+                            // On Windows the host-side cursor overlay is reserved for
+                            // host priority, not ordinary injected controller input.
+                            self.show_my_cursor && !cfg!(target_os = "windows"),
                         );
-                    } else if self.show_my_cursor {
+                    } else if self.show_my_cursor && !cfg!(target_os = "windows") {
                         #[cfg(target_os = "macos")]
                         self.retina.on_mouse_event(&mut me, self.display_idx);
                         self.input_mouse(
@@ -3326,6 +3361,17 @@ impl Connection {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 Some(message::Union::KeyEvent(me)) => {
                     if self.is_authed_view_camera_conn() {
+                        return true;
+                    }
+                    // KomiRemote host priority: drop key presses while the host types or
+                    // moves its mouse; key releases always pass so nothing stays held.
+                    #[cfg(target_os = "windows")]
+                    if self.peer_keyboard_enabled()
+                        && (me.down || me.press)
+                        && crate::komi_host_priority::active()
+                    {
+                        self.komi_sync_host_priority(true).await;
+                        self.update_auto_disconnect_timer();
                         return true;
                     }
                     if self.peer_keyboard_enabled() {
@@ -5056,6 +5102,87 @@ impl Connection {
         }
     }
 
+    // KomiRemote: offer the controller to view this PC's camera. Only the camera option
+    // is ever changed, and only when the user agreed to it in the cm (`enable_camera`).
+    /// KomiRemote: returns true when this mouse event must be dropped because the
+    /// host is using its own mouse/keyboard. The controller's pointer is then only
+    /// drawn on the host's screen (name label + click ripple), never simulated.
+    #[cfg(target_os = "windows")]
+    async fn komi_host_priority_mouse(&mut self, me: &MouseEvent) -> bool {
+        let active = crate::komi_host_priority::active();
+        self.komi_sync_host_priority(active).await;
+        let ty = me.mask & 0x7;
+        let btns = me.mask >> 3;
+        if !active {
+            if ty == 1 {
+                self.komi_btns_forwarded |= btns;
+            } else if ty == 2 {
+                self.komi_btns_forwarded &= !btns;
+            }
+            return false;
+        }
+        // Never leave a button stuck: an "up" whose "down" was forwarded always passes.
+        if ty == 2 && btns != 0 && (self.komi_btns_forwarded & btns) != 0 {
+            self.komi_btns_forwarded &= !btns;
+            return false;
+        }
+        if crate::platform::windows::is_win_10_or_greater() {
+            if self.komi_overlay_last.is_none() {
+                crate::whiteboard::register_whiteboard(crate::whiteboard::get_key_cursor(
+                    self.inner.id,
+                ));
+            }
+            self.input_mouse(
+                me.clone(),
+                self.inner.id(),
+                self.lr.my_name.clone(),
+                self.peer_argb,
+                false,
+                true,
+            );
+            self.komi_overlay_last = Some(std::time::Instant::now());
+        }
+        true
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn komi_sync_host_priority(&mut self, active: bool) {
+        if active == self.komi_host_priority_sent {
+            return;
+        }
+        self.komi_host_priority_sent = active;
+        let mut misc = Misc::new();
+        misc.set_komi_host_priority(active);
+        let mut msg = Message::new();
+        msg.set_misc(misc);
+        self.send(msg).await;
+        if !active {
+            self.komi_clear_overlay();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn komi_clear_overlay(&mut self) {
+        if self.komi_overlay_last.take().is_some() {
+            crate::whiteboard::update_whiteboard(
+                crate::whiteboard::get_key_cursor(self.inner.id),
+                crate::whiteboard::CustomEvent::Clear,
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn komi_host_priority_tick(&mut self) {
+        if !self.komi_host_priority_sent && self.komi_overlay_last.is_none() {
+            return;
+        }
+        let active = crate::komi_host_priority::active();
+        self.komi_sync_host_priority(active).await;
+        // Keep the last position visible while priority remains active, even
+        // when the controller is stationary. It is cleared on priority exit.
+
+    }
+
     fn komi_video_bind(&self) {
         if !self.authorized || !self.is_remote() {
             return;
@@ -5075,6 +5202,39 @@ impl Connection {
         });
         crate::komi_video_call::host_bind(self.inner.id(), signal, video, cm);
     }
+}
+
+lazy_static::lazy_static! {
+    /// Peer IDs the host just offered a camera to. A later view-camera login
+    /// from one of them is already consented and must not ask again.
+    static ref KOMI_CAMERA_SHARE: std::sync::Mutex<std::collections::HashMap<String, i64>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+fn komi_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+fn komi_note_camera_share(peer_id: &str) {
+    if peer_id.is_empty() {
+        return;
+    }
+    let until = komi_now_ms().saturating_add(120_000);
+    if let Ok(mut map) = KOMI_CAMERA_SHARE.lock() {
+        map.insert(peer_id.to_owned(), until);
+    }
+}
+
+fn komi_take_camera_share(peer_id: &str) -> bool {
+    let now = komi_now_ms();
+    let Ok(mut map) = KOMI_CAMERA_SHARE.lock() else {
+        return false;
+    };
+    map.retain(|_, exp| *exp > now);
+    map.remove(peer_id).is_some()
 }
 
 impl Connection {
@@ -5097,6 +5257,8 @@ impl Connection {
         let mut msg = Message::new();
         msg.set_misc(misc);
         self.send(msg).await;
+        #[cfg(target_os = "windows")]
+        komi_note_camera_share(&self.lr.my_id);
     }
 
     pub async fn close_voice_call(&mut self) {

@@ -116,6 +116,8 @@ class FfiModel with ChangeNotifier {
 
   var _inputBlocked = false;
   final _permissions = <String, bool>{};
+  // The controlled Windows PC's user has priority over injected input.
+  final komiHostPriority = false.obs;
   bool? _secure;
   bool? _direct;
   bool _touchMode = false;
@@ -437,7 +439,8 @@ class FfiModel with ChangeNotifier {
         // A camera invite and a video call cannot run together.
         KomiVideoCallUi.forSession(sessionId).command('hangup');
         _komiShowCameraInvite(sessionId, peerId);
-
+      } else if (name == 'komi_host_priority') {
+        parent.target?.ffiModel.komiHostPriority.value = evt['active'] == 'true';
       } else if (name == 'komi_video_call') {
         KomiVideoCallUi.forSession(sessionId).apply(
             evt['phase']?.toString() ?? 'idle',
@@ -3951,7 +3954,7 @@ class CursorModel with ChangeNotifier {
     }
     _x = double.parse(evt['x']);
     _y = double.parse(evt['y']);
-    _setPeerControllerName(evt['name']);
+    _setPeerControllerName(evt['controller_name']);
     try {
       RemoteCursorMovedState.find(id).value = true;
     } catch (e) {

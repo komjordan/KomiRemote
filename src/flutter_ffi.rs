@@ -32,7 +32,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-// Direct C exports are compiled into librustdesk.dll / liblibrustdesk.dylib without bridge regeneration.
+// Direct C exports use platform-protected storage without bridge regeneration.
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 #[path = "komi_names.rs"]
 mod komi_names;
@@ -1152,8 +1152,13 @@ pub fn main_store_fav(favs: Vec<String>) {
 }
 
 pub fn main_get_peer_sync(id: String) -> SyncReturn<String> {
+    let exists = hbb_common::config::PeerConfig::exists(&id);
     let conf = get_peer(id);
-    SyncReturn(serde_json::to_string(&conf).unwrap_or("".to_string()))
+    let mut value = serde_json::to_value(&conf).unwrap_or(serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("komi_peer_file".to_owned(), serde_json::json!(exists));
+    }
+    SyncReturn(value.to_string())
 }
 
 pub fn main_get_lan_peers() -> String {

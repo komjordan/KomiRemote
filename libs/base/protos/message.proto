@@ -872,6 +872,7 @@ message Misc {
     uint64 request_cursor_data = 39;
     // KomiRemote: the controlled PC offers the controller to view its camera.
     bool komi_camera_invite = 1001;
+    bool komi_host_priority = 1002;
   }
 }
 

@@ -18,7 +18,7 @@ class WindowsInitialization(unittest.TestCase):
         loader = common.split('pub fn load_custom_client()', 1)[1]
         self.assertLess(loader.index('initialize_komi_defaults();'), loader.index('custom.txt'))
         helper = common.split('pub(crate) fn initialize_komi_defaults()', 1)[1].split('pub fn load_custom_client()', 1)[0]
-        self.assertIn('#[cfg(windows)]', helper)
+        self.assertIn('#[cfg(any(windows, target_os = "macos"))]', helper)
         self.assertIn('static INIT: std::sync::Once', helper)
         self.assertIn('&config::APP_NAME', helper)
         self.assertIn('&config::DEFAULT_SETTINGS', helper)

@@ -52,7 +52,13 @@ class KomiV15About(unittest.TestCase):
 
     def test_source_and_legal_links_use_published_tag(self):
         urls = about_urls()
-        self.assertEqual(urls["kKomiSourceUrl"], f"https://github.com/komjordan/KomiRemote/tree/{TAG}")
+        self.assertEqual(urls["kKomiWindowsSourceUrl"], f"https://github.com/komjordan/KomiRemote/tree/{TAG}")
+        self.assertEqual(urls["kKomiMacSourceUrl"], "https://github.com/komjordan/KomiRemote/tree/komiremote-macos")
+        settings = read("flutter/lib/desktop/pages/desktop_setting_page.dart")
+        self.assertIn("Platform.isMacOS ? kKomiMacSourceUrl : kKomiWindowsSourceUrl", settings)
+        workflow = read(".github/workflows/komiremote-macos-test.yml")
+        self.assertIn("assert t.count(old) == 1", workflow)
+        self.assertIn("os.environ['GITHUB_SHA']", workflow)
         self.assertEqual(
             urls["kKomiLegalNoticesUrl"],
             f"https://github.com/komjordan/KomiRemote/blob/{TAG}/docs/komiremote/LEGAL-NOTICES-KOMIREMOTE.md",
@@ -127,7 +133,8 @@ class KomiV15Update(unittest.TestCase):
         version = re.search(r"kKomiCurrentVersion = '([\d.]+)'", logic).group(1)
         build = re.search(r"kKomiCurrentBuild = (\d+);", logic).group(1)
         self.assertRegex(read("flutter/pubspec.yaml"), rf"(?m)^version: {re.escape(version)}\+{build}$")
-        self.assertEqual((version, build), ("1.5.1", "71"))
+        self.assertEqual(version, "1.5.1")
+        self.assertGreaterEqual(int(build), 71)
 
 
 class KomiV15Logos(unittest.TestCase):

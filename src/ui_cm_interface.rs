@@ -295,6 +295,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             .unwrap()
             .retain(|_, c| !(c.disconnected && c.peer_id == client.peer_id));
         CLIENTS.write().unwrap().insert(id, client.clone());
+        #[cfg(target_os = "windows")]
+        crate::komi_pills::ensure_started();
         self.ui_handler.add_connection(&client);
     }
 
@@ -441,6 +443,44 @@ pub fn authorize(id: i32) {
         client.authorized = true;
         allow_err!(client.tx.send(Data::Authorize));
     };
+}
+
+/// KomiRemote: what the host's floating pills need to know about a session.
+#[cfg(target_os = "windows")]
+pub struct KomiPillClient {
+    pub id: i32,
+    pub name: String,
+    pub in_voice_call: bool,
+    pub is_view_camera: bool,
+    pub is_control: bool,
+    pub in_video_call: bool,
+    pub is_camera_share: bool,
+    pub video_accepted_at: Option<std::time::Instant>,
+}
+
+#[cfg(target_os = "windows")]
+pub fn komi_pill_clients() -> Vec<KomiPillClient> {
+    let mut v: Vec<KomiPillClient> = CLIENTS
+        .read()
+        .unwrap()
+        .values()
+        .filter(|c| c.authorized && !c.disconnected)
+        .map(|c| KomiPillClient {
+            id: c.id,
+            name: c.name.clone(),
+            in_voice_call: c.in_voice_call,
+            is_view_camera: c.is_view_camera,
+            is_control: !c.is_file_transfer
+                && !c.is_view_camera
+                && !c.is_terminal
+                && c.port_forward.is_empty(),
+            in_video_call: c.in_video_call,
+            is_camera_share: c.komi_video_call_id.starts_with("cam:"),
+            video_accepted_at: c.komi_video_accepted_at,
+        })
+        .collect();
+    v.sort_by_key(|c| c.id);
+    v
 }
 
 #[inline]
@@ -1884,6 +1924,14 @@ pub fn komi_video_call(id: i32, cmd: &str, enabled: bool) {
             enabled,
         }));
     }
+}
+
+#[cfg(target_os = "windows")]
+pub fn komi_video_call_hangup(id: i32) {
+    #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+    komi_video_call(id, "hangup", false);
+    #[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
+    let _ = id;
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]

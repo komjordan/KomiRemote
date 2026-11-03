@@ -27,7 +27,11 @@ class MacVideoIntegration(unittest.TestCase):
         for anchor in ['fn komi_camera_invite(', 'fn update_komi_video_call_state(',
                        'fn komi_video_frame(&self, path:', 'fn komi_video_frame(&self, id:']:
             self.assertEqual(block(actual, anchor), block(reference, anchor))
-        self.assertNotIn('komi_host_priority', actual)
+        # A common desktop tree keeps the Windows protocol callback. Native
+        # floating pills remain compiled only on Windows, not on macOS.
+        lib = (ROOT / 'src/lib.rs').read_text()
+        self.assertRegex(lib, r'#\[cfg\(target_os = "windows"\)\]\s*mod komi_pills;')
+        self.assertIn('fn komi_host_priority(&self, active: bool)', actual)
 
     def test_permissions_and_single_owner_rpc(self):
         ui = (ROOT / 'flutter/lib/desktop/widgets/komi_video_call_window.dart').read_text()

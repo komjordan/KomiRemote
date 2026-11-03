@@ -680,7 +680,7 @@ impl InvokeUiSession for FlutterHandler {
                 ("y", &cp.y.to_string()),
                 // KomiRemote: name tag of the viewer moving the cursor (may be empty).
                 (
-                    "name",
+                    "controller_name",
                     &crate::komi_cursor_tag::sanitize_controller_name(&cp.controller_name),
                 ),
             ],
@@ -1077,6 +1077,14 @@ impl InvokeUiSession for FlutterHandler {
 
     fn komi_camera_invite(&self) {
         self.push_event::<&str>("komi_camera_invite", &[], &[]);
+    }
+
+    fn komi_host_priority(&self, active: bool) {
+        self.push_event(
+            "komi_host_priority",
+            &[("active", if active { "true" } else { "false" })],
+            &[],
+        );
     }
 
     fn update_komi_video_call_state(&self, phase: &str, local: bool, remote: bool, call_id: &str) {

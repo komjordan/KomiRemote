@@ -1759,6 +1759,8 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn on_voice_call_incoming(&self);
     // KomiRemote: the controlled PC offers to show its camera.
     fn komi_camera_invite(&self) {}
+    // KomiRemote: the controlled PC's own user is using mouse/keyboard (priority).
+    fn komi_host_priority(&self, _active: bool) {}
     fn update_komi_video_call_state(&self, _phase: &str, _local: bool, _remote: bool, _call_id: &str) {}
     fn komi_video_frame(&self, _path: &str, _seq: u32, _stream: u32, _w: u32, _h: u32) {}
     fn get_rgba(&self, display: usize) -> *const u8;

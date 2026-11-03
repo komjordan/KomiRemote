@@ -374,19 +374,12 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
 
     if state.is_moved(x, y) {
         let now = get_time();
-        // KomiRemote: tell the other viewers who is moving the cursor (empty when
-        // nobody remote moved it recently, e.g. the local user).
-        let (controller_name, controller_conn) = {
+        // KomiRemote: tell the other viewers who is moving the cursor, only while a
+        // remote controller is actually moving it (empty for the local user's moves).
+        let (mut controller_name, controller_conn) = {
             let lock = LATEST_PEER_CURSOR_CONTROLLER.lock().unwrap();
-            (lock.broadcast_name(now), lock.active_conn(now))
+            (lock.moving_name(now), lock.active_conn(now))
         };
-        let mut msg_out = Message::new();
-        msg_out.set_cursor_position(CursorPosition {
-            x,
-            y,
-            controller_name,
-            ..Default::default()
-        });
         let exclude = {
             let lock = LATEST_PEER_INPUT_CURSOR.lock().unwrap();
             if now - lock.time < 300 {
@@ -397,7 +390,21 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
                 controller_conn.unwrap_or(0)
             }
         };
-        sp.send_without(msg_out, exclude);
+        // The named position must never reach the controller itself: it is excluded
+        // here (it needs no echo of its own moves). If the echo exclusion targets
+        // another connection, send no name rather than risk showing it to its owner.
+        let named_target = controller_conn.filter(|c| *c == exclude || exclude == 0);
+        if named_target.is_none() {
+            controller_name.clear();
+        }
+        let mut msg_out = Message::new();
+        msg_out.set_cursor_position(CursorPosition {
+            x,
+            y,
+            controller_name,
+            ..Default::default()
+        });
+        sp.send_without(msg_out, named_target.unwrap_or(exclude));
     }
     state.cursor_pos = (x, y);
 
@@ -1509,7 +1516,7 @@ pub fn handle_mouse_show_cursor_(evt: &MouseEvent, conn: i32, username: String, 
             );
         }
         MOUSE_TYPE_UP => {
-            if buttons == MOUSE_BUTTON_LEFT {
+            if buttons == MOUSE_BUTTON_LEFT || (cfg!(target_os = "windows") && buttons != 0) {
                 // Some clients intentionally send button events without coordinates.
                 // Fall back to the last known cursor position to avoid jumping to (0, 0).
                 // TODO(protocol): (0, 0) is a valid screen coordinate. Consider using a dedicated

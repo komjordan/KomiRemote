@@ -50,6 +50,17 @@ pub(super) fn create_event_loop() -> ResultType<()> {
 
     let window = Arc::new(window_builder.build::<(String, CustomEvent)>(&event_loop)?);
     window.set_ignore_cursor_events(true)?;
+    // KomiRemote: the host-side cursor overlay never shows in the captured stream.
+    {
+        use tao::platform::windows::WindowExtWindows;
+        #[link(name = "user32")]
+        extern "system" {
+            fn SetWindowDisplayAffinity(hwnd: isize, affinity: u32) -> i32;
+        }
+        unsafe {
+            SetWindowDisplayAffinity(window.hwnd() as isize, 0x11);
+        }
+    }
 
     let context = Context::new(window.clone()).map_err(|e| {
         log::error!("Failed to create context: {}", e);
@@ -218,6 +229,9 @@ pub(super) fn create_event_loop() -> ResultType<()> {
                         });
                     }
                     last_cursors.insert(k, cursor);
+                }
+                CustomEvent::Clear => {
+                    last_cursors.remove(&k);
                 }
                 CustomEvent::Exit => {
                     *control_flow = ControlFlow::Exit;

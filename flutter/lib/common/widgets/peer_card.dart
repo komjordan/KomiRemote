@@ -609,6 +609,23 @@ abstract class BasePeerCard extends StatelessWidget {
     );
   }
 
+  /// Recent-peer menu only. Connects, then requests a voice call once the
+  /// session shows its first image.
+  MenuEntryBase<String> _voiceCallAction(BuildContext context) {
+    return MenuEntryButton<String>(
+      childBuilder: (TextStyle? style) => Text(
+        'Passez un appel vocal',
+        style: style,
+      ),
+      proc: () {
+        KomiPendingVoiceCall.peerId = peer.id;
+        connectInPeerTab(context, peer, tab);
+      },
+      padding: menuPadding,
+      dismissOnClicked: true,
+    );
+  }
+
   @protected
   MenuEntryBase<String> _viewCameraAction(BuildContext context) {
     return _connectCommonAction(
@@ -986,7 +1003,7 @@ class RecentPeerCard extends BasePeerCard {
     final List<MenuEntryBase<String>> menuItems = [
       _connectAction(context),
       _transferFileAction(context),
-      _viewCameraAction(context),
+      _voiceCallAction(context),
       _terminalAction(context),
     ];
 
@@ -996,13 +1013,6 @@ class RecentPeerCard extends BasePeerCard {
 
     final List favs = (await bind.mainGetFav()).toList();
 
-    if (isDesktop && peer.platform != kPeerPlatformAndroid) {
-      menuItems.add(_tcpTunnelingAction(context));
-    }
-    // menuItems.add(await _openNewConnInOptAction(peer.id));
-    if (!isWeb) {
-      menuItems.add(await _forceAlwaysRelayAction(peer.id));
-    }
     if (isWindows && peer.platform == kPeerPlatformWindows) {
       menuItems.add(_rdpAction(context, peer.id));
     }

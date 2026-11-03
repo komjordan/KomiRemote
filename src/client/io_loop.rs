@@ -2216,6 +2216,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(misc::Union::KomiCameraInvite(_)) => {
                         self.handler.komi_camera_invite();
                     }
+                    Some(misc::Union::KomiHostPriority(active)) => {
+                        self.handler.komi_host_priority(active);
+                    }
                     Some(misc::Union::ChatMessage(c)) => {
                         self.handler.new_message(c.text);
                     }

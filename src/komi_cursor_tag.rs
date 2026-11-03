@@ -65,6 +65,17 @@ impl CursorController {
         }
     }
 
+    /// Name to attach for the other viewers while that controller is actually moving
+    /// the cursor (same window as [`Self::active_conn`]); empty otherwise, so moves made
+    /// by the local user never carry a remote name.
+    pub fn moving_name(&self, now: i64) -> String {
+        if self.is_fresh(now, CONTROLLER_ACTIVE_MS) {
+            self.name.clone()
+        } else {
+            String::new()
+        }
+    }
+
     /// The connection currently moving the cursor, if any.
     pub fn active_conn(&self, now: i64) -> Option<i32> {
         if self.is_fresh(now, CONTROLLER_ACTIVE_MS) {

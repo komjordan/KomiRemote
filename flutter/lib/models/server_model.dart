@@ -769,6 +769,12 @@ class ServerModel with ChangeNotifier {
         if (client.komiVideoPhase == 'incoming') {
           windowOnTop(null);
         }
+        if (isWindows && client.komiCameraDisabled) {
+          // Keep the Windows host's explicit show-camera consent path. On Mac,
+          // retain the permission-gated camera action and ordinary login approval.
+          bind.cmSwitchPermission(
+              connId: client.id, name: 'komi-camera-invite', enabled: true);
+        }
         if (client.incomingVoiceCall) {
           if (isAndroid) {
             showVoiceCallDialog(client);
