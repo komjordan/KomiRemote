@@ -64,7 +64,7 @@ La version portable publiée correspond au tag [`v1.5.1-komi.71`](https://github
 
 ## Captures
 
-Les captures historiques proviennent de KomiRemote v1.5.1-komi.71 ; la demande d’appel vidéo et les pastilles hôte montrent les évolutions Windows approuvées le 3 novembre 2026. Les IDs des captures historiques sont floutés ; les noms d’appareils restent visibles. La nouvelle capture d’appel conserve l’ID visible tel qu’approuvé.
+Les captures historiques proviennent de KomiRemote v1.5.1-komi.71 ; la demande d’appel vidéo et les pastilles hôte montrent les évolutions Windows approuvées le 3 novembre 2026. Les IDs de connexion sont floutés ; les noms d’appareils restent visibles.
 
 ### Accueil
 
