@@ -1,16 +1,22 @@
-//! Windows-only public-name management. Included by flutter_ffi so the exports
-//! are linked into librustdesk.dll without changing the generated Flutter bridge.
-#![cfg(target_os = "windows")]
+//! Windows/macOS public-name management. Included by flutter_ffi so the exports
+//! are linked into librustdesk.dll / liblibrustdesk.dylib without changing the
+//! generated Flutter bridge. Windows keeps the seed with DPAPI, macOS in the
+//! user's login Keychain; everything else is shared.
+#![cfg(any(target_os = "windows", target_os = "macos"))]
 
 use hbb_common::sodiumoxide::{base64, crypto::sign::ed25519 as sign, utils};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{ffi::CString, fs::{self, OpenOptions}, io::{Read, Write}, os::raw::c_char, path::PathBuf, ptr, sync::Mutex, time::Duration};
+#[cfg(target_os = "windows")]
+use std::{fs::{self, OpenOptions}, io::Write, path::PathBuf, ptr};
+use std::{ffi::CString, io::Read, os::raw::c_char, sync::Mutex, time::Duration};
+#[cfg(target_os = "windows")]
 use winapi::{shared::minwindef::HLOCAL, um::{dpapi::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN}, winbase::LocalFree, wincrypt::DATA_BLOB}};
 
 static LOCK: Mutex<()> = Mutex::new(());
 const MAX_INPUT: usize = 4096;
 const MAX_RESPONSE: u64 = 4096;
+#[cfg(target_os = "windows")]
 const ENTROPY_PREFIX: &[u8] = b"KomiRemote/public-names/v1\0";
 
 fn error(message: &'static str) -> Value { json!({"error": message}) }
@@ -42,14 +48,18 @@ fn check_keys(v: &Value, expected: &[&str]) -> Result<(), &'static str> {
     if obj.len() != expected.len() || !expected.iter().all(|k| obj.contains_key(*k)) { return Err(bad()); }
     Ok(())
 }
+#[cfg(target_os = "windows")]
 fn state_path(ns: &str) -> Result<PathBuf, &'static str> {
     let dir = PathBuf::from(std::env::var_os("APPDATA").ok_or("User profile unavailable")?).join("KomiRemote").join("public-names");
     fs::create_dir_all(&dir).map_err(|_| "Protected storage unavailable")?;
     let hash = Sha256::digest(ns.as_bytes());
     Ok(dir.join(format!("{:x}.dpapi", hash)))
 }
+#[cfg(target_os = "windows")]
 fn entropy(ns: &str) -> Vec<u8> { let mut x = ENTROPY_PREFIX.to_vec(); x.extend_from_slice(ns.as_bytes()); x }
+#[cfg(target_os = "windows")]
 fn blob(data: &mut [u8]) -> DATA_BLOB { DATA_BLOB { cbData: data.len() as u32, pbData: data.as_mut_ptr() } }
+#[cfg(target_os = "windows")]
 fn protect(plain: &mut [u8], ns: &str) -> Result<Vec<u8>, &'static str> {
     let mut entropy = entropy(ns);
     let mut output: DATA_BLOB = unsafe { std::mem::zeroed() };
@@ -59,6 +69,7 @@ fn protect(plain: &mut [u8], ns: &str) -> Result<Vec<u8>, &'static str> {
     unsafe { LocalFree(output.pbData as HLOCAL); }
     Ok(result)
 }
+#[cfg(target_os = "windows")]
 fn unprotect(data: &mut [u8], ns: &str) -> Result<Vec<u8>, &'static str> {
     let mut entropy = entropy(ns);
     let mut output: DATA_BLOB = unsafe { std::mem::zeroed() };
@@ -70,6 +81,7 @@ fn unprotect(data: &mut [u8], ns: &str) -> Result<Vec<u8>, &'static str> {
 }
 
 // Only the 32-byte Ed25519 seed is stored; never serialize the full secret key.
+#[cfg(target_os = "windows")]
 fn load(ns: &str) -> Result<Option<sign::Seed>, &'static str> {
     let path = state_path(ns)?;
     let mut f = match fs::File::open(path) { Ok(f) => f, Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None), Err(_) => return Err("Protected storage unavailable") };
@@ -81,6 +93,7 @@ fn load(ns: &str) -> Result<Option<sign::Seed>, &'static str> {
     let mut seed = [0u8; 32]; seed.copy_from_slice(&plain); utils::memzero(&mut plain);
     Ok(Some(sign::Seed(seed)))
 }
+#[cfg(target_os = "windows")]
 fn save_new(ns: &str, seed: &mut [u8; 32]) -> Result<(), &'static str> {
     let mut encrypted = protect(seed, ns)?;
     let path = state_path(ns)?;
@@ -94,6 +107,36 @@ fn save_new(ns: &str, seed: &mut [u8; 32]) -> Result<(), &'static str> {
     })();
     utils::memzero(&mut encrypted);
     result?;
+    let recovered = load(ns)?.ok_or("Protected identity cannot be opened")?;
+    if recovered.0 != *seed { return Err("Protected identity cannot be opened"); }
+    Ok(())
+}
+// macOS: the seed is a generic password in the user's login Keychain
+// (service "KomiRemote public-names v1", account = SHA-256 of the namespace).
+#[cfg(target_os = "macos")]
+const KEYCHAIN_SERVICE: &str = "KomiRemote public-names v1";
+#[cfg(target_os = "macos")]
+const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+#[cfg(target_os = "macos")]
+fn keychain_account(ns: &str) -> String { format!("{:x}", Sha256::digest(ns.as_bytes())) }
+#[cfg(target_os = "macos")]
+fn load(ns: &str) -> Result<Option<sign::Seed>, &'static str> {
+    use security_framework::passwords::get_generic_password;
+    let mut plain = match get_generic_password(KEYCHAIN_SERVICE, &keychain_account(ns)) {
+        Ok(v) => v,
+        Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => return Ok(None),
+        Err(_) => return Err("Protected identity cannot be opened"),
+    };
+    if plain.len() != 32 { utils::memzero(&mut plain); return Err("Protected identity is invalid"); }
+    let mut seed = [0u8; 32]; seed.copy_from_slice(&plain); utils::memzero(&mut plain);
+    Ok(Some(sign::Seed(seed)))
+}
+#[cfg(target_os = "macos")]
+fn save_new(ns: &str, seed: &mut [u8; 32]) -> Result<(), &'static str> {
+    use security_framework::passwords::set_generic_password;
+    // Never overwrite an existing identity (same rule as create_new on Windows).
+    if load(ns)?.is_some() { return Err("Protected identity already exists"); }
+    set_generic_password(KEYCHAIN_SERVICE, &keychain_account(ns), &seed[..]).map_err(|_| "Protected storage unavailable")?;
     let recovered = load(ns)?.ok_or("Protected identity cannot be opened")?;
     if recovered.0 != *seed { return Err("Protected identity cannot be opened"); }
     Ok(())
@@ -241,7 +284,7 @@ fn run(v: Value) -> Result<Value, &'static str> {
         resolve(&c, &u, next, id, ns, &pk)?;
     } else {
         if result.get("released").and_then(Value::as_bool) != Some(true) { return Err("Untrusted registry response"); }
-        // Retain the DPAPI identity: uncertain network completion must never
+        // Retain the DPAPI/Keychain identity: uncertain network completion must never
         // silently rotate the key. A released key can be used for a new claim.
     }
     Ok(result)

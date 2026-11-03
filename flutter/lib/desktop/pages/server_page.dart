@@ -1,6 +1,7 @@
 // original cm window in Sciter version.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../common.dart';
+import '../widgets/komi_video_call_window.dart';
 import '../../common/widgets/chat_page.dart';
 import '../../models/file_model.dart';
 import '../../models/platform_model.dart';
@@ -889,6 +891,39 @@ class _CmControlPanel extends StatelessWidget {
         : buildUnAuthorized(context);
   }
 
+  Future<void> chooseVideoInput(BuildContext context, TapDownDetails details) async {
+    final callId = client.komiVideoCallId;
+    try {
+      final result = jsonDecode(await bind.cmGetConfig(name: 'komi-video-inputs'));
+      if (!context.mounted || client.disconnected || client.incomingVoiceCall ||
+          client.komiVideoPhase != 'active' || client.komiVideoCallId != callId) return;
+      final devices = (result['devices'] as List).cast<List>();
+      if (devices.isEmpty) {
+        showToast(result['error'] == null
+            ? 'Aucune caméra locale disponible'
+            : 'Impossible de lister les caméras locales');
+        return;
+      }
+      final point = details.globalPosition;
+      final selected = await showMenu<String>(
+        context: context,
+        position: RelativeRect.fromLTRB(point.dx, point.dy, point.dx, point.dy),
+        items: devices.map((device) => PopupMenuItem<String>(
+          value: device[0] as String,
+          child: Text(device[1] as String, overflow: TextOverflow.ellipsis),
+        )).toList(),
+      );
+      if (selected == null || !context.mounted || client.disconnected ||
+          client.incomingVoiceCall || client.komiVideoPhase != 'active' ||
+          client.komiVideoCallId != callId) return;
+      bind.cmSwitchPermission(connId: client.id,
+          name: 'komi-video-input:${jsonEncode({'call_id': callId, 'input': selected})}',
+          enabled: true);
+    } catch (error) {
+      if (context.mounted) showToast('Impossible de choisir la caméra locale');
+    }
+  }
+
   buildAuthorized(BuildContext context) {
     final colors = ServerPageColors(Theme.of(context));
     final bool canElevate = bind.cmCanElevate();
@@ -896,11 +931,146 @@ class _CmControlPanel extends StatelessWidget {
     final showElevation = canElevate &&
         model.showElevation &&
         client.type_() == ClientType.remote;
+    final requester = client.name.trim().isNotEmpty
+        ? client.name.trim()
+        : (client.peerId.trim().isNotEmpty ? client.peerId.trim() : 'un PC');
+    final incomingVoice = client.incomingVoiceCall;
+    final incomingVideo = client.komiVideoPhase == 'incoming';
+    final hideActions = incomingVoice || incomingVideo;
+    final activeVideo = client.komiVideoPhase == 'active' &&
+        !client.komiVideoCallId.startsWith('cam:');
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
+        // Hidden while an incoming call or camera offer is waiting.
         Offstage(
-          offstage: !client.inVoiceCall,
+          offstage: client.type_() != ClientType.remote || hideActions,
+          child: Row(
+            children: [
+              if (activeVideo || (!client.inVoiceCall && !client.incomingVoiceCall))
+              Expanded(
+                child: client.outgoingVoiceCall
+                    ? buildButton(context,
+                        color: colors.rejectBackground,
+                        onClick: () => closeVoiceCall(),
+                        icon: Icon(
+                          Icons.call_end_rounded,
+                          color: colors.rejectForeground,
+                          size: 14,
+                        ),
+                        text: "Annuler",
+                        tooltip: 'Annuler l’appel vocal',
+                        textColor: colors.rejectForeground)
+                    : buildButton(context,
+                        color: colors.acceptBackground,
+                        onClick: () => bind.cmSwitchPermission(
+                            connId: client.id,
+                            name: 'komi-voice-call',
+                            enabled: true),
+                        icon: Icon(
+                          Icons.call_rounded,
+                          color: colors.acceptForeground,
+                          size: 14,
+                        ),
+                        text: "Vocal",
+                        tooltip: 'Passer un appel vocal',
+                        textColor: colors.acceptForeground),
+              ),
+              if (activeVideo)
+                Expanded(
+                  child: buildButton(context,
+                      color: colors.acceptBackground,
+                      onClick: null,
+                      onTapDown: (details) => chooseVideoInput(context, details),
+                      icon: Icon(Icons.videocam_rounded,
+                          color: colors.acceptForeground, size: 14),
+                      text: 'Video Input',
+                      tooltip: 'Choisir ma caméra locale',
+                      textColor: colors.acceptForeground),
+                ),
+              if (!activeVideo)
+              Expanded(
+                child: buildButton(context,
+                    color: colors.acceptBackground,
+                    onClick: () {
+                      final showing = client.komiVideoCallId.startsWith('cam:');
+                      final inVideo = !showing &&
+                          (client.komiVideoPhase == 'outgoing' ||
+                              client.komiVideoPhase == 'active');
+                      KomiVideoCallUi.forHost(client.id)
+                          .command(inVideo ? 'hangup' : 'request');
+                    },
+                    icon: Icon(
+                      Icons.video_call_rounded,
+                      color: colors.acceptForeground,
+                      size: 14,
+                    ),
+                    text: "Vidéo",
+                    tooltip: 'Passer un appel vidéo',
+                    textColor: colors.acceptForeground),
+              ),
+              if (!activeVideo)
+              Expanded(
+                child: buildButton(context,
+                    color: colors.acceptBackground,
+                    onClick: () async {
+                      final phase = client.komiVideoPhase;
+                      final callId = client.komiVideoCallId;
+                      final showing = callId.startsWith('cam:');
+                      final stopping = showing ||
+                          (phase == 'active' && client.komiVideoLocalCamera);
+                      if (!stopping &&
+                          !await komiEnsureMediaPermission(camera: true)) return;
+                      if (!context.mounted || client.disconnected || client.incomingVoiceCall ||
+                          client.komiVideoPhase != phase || client.komiVideoCallId != callId) return;
+                      if (showing || client.komiVideoPhase == 'outgoing') {
+                        KomiVideoCallUi.forHost(client.id).command('hangup');
+                        if (showing) return;
+                      }
+                      if (client.komiVideoPhase == 'active') {
+                        KomiVideoCallUi.forHost(client.id).command(
+                            client.komiVideoLocalCamera ? 'camera-off' : 'camera-on');
+                      } else {
+                        // One decision from the host: offer the camera to every
+                        // connected controller. The first acceptance starts it.
+                        final model = Provider.of<ServerModel>(context, listen: false);
+                        for (final other in model.clients) {
+                          if (!other.authorized ||
+                              other.disconnected ||
+                              other.type_() != ClientType.remote) {
+                            continue;
+                          }
+                          bind.cmSwitchPermission(
+                              connId: other.id,
+                              name: 'komi-camera-invite',
+                              enabled: true);
+                        }
+                      }
+                    },
+                    icon: Icon(
+                      Icons.videocam_rounded,
+                      color: colors.acceptForeground,
+                      size: 14,
+                    ),
+                    text: "Caméra",
+                    tooltip: client.komiVideoLocalCamera
+                        ? 'Arrêter ma caméra' : 'Montrer ma caméra',
+                    textColor: colors.acceptForeground),
+              ),
+            ],
+          ),
+        ),
+        if (!hideActions && (client.komiVideoPhase == 'outgoing' ||
+            (client.komiVideoPhase == 'active' && !activeVideo)))
+          buildButton(context, color: colors.rejectBackground,
+              onClick: () => KomiVideoCallUi.forHost(client.id).command('hangup'),
+              icon: Icon(Icons.call_end_rounded, color: colors.rejectForeground, size: 14),
+              text: client.komiVideoPhase == 'outgoing' ? 'Annuler' : 'Raccrocher',
+              tooltip: client.komiVideoPhase == 'outgoing'
+                  ? 'Annuler l’appel vidéo' : 'Raccrocher l’appel vidéo',
+              textColor: colors.rejectForeground),
+        Offstage(
+          offstage: hideActions || (!client.inVoiceCall && !activeVideo),
           child: Row(
             children: [
               Expanded(
@@ -972,46 +1142,60 @@ class _CmControlPanel extends StatelessWidget {
                 child: buildButton(
                   context,
                   color: colors.rejectBackground,
-                  onClick: () => closeVoiceCall(),
+                  onClick: () => activeVideo
+                      ? KomiVideoCallUi.forHost(client.id).command('hangup')
+                      : closeVoiceCall(),
                   icon: Icon(
                     Icons.call_end_rounded,
                     color: colors.rejectForeground,
                     size: 14,
                   ),
-                  text: "Stop voice call",
+                  text: "Raccrocher",
                   textColor: colors.rejectForeground,
                 ),
               )
             ],
           ),
         ),
+        if (incomingVoice)
+          Text('Appel vocal de $requester', textAlign: TextAlign.center),
+        if (incomingVideo)
+          Text(
+              client.komiVideoCallId.startsWith('cam:')
+                  ? 'Caméra de $requester'
+                  : 'Appel vidéo de $requester — accepter active votre caméra et votre microphone.',
+              textAlign: TextAlign.center),
         Offstage(
-          offstage: !client.incomingVoiceCall,
+          offstage: !client.incomingVoiceCall && client.komiVideoPhase != 'incoming',
           child: Row(
             children: [
               Expanded(
                 child: buildButton(context,
                     color: colors.acceptBackground,
-                    onClick: () => handleVoiceCall(true),
+                    onClick: () => client.komiVideoPhase == 'incoming'
+                        ? KomiVideoCallUi.forHost(client.id).command('accept')
+                        : handleVoiceCall(true),
                     icon: Icon(
                       Icons.call_rounded,
                       color: colors.acceptForeground,
                       size: 14,
                     ),
-                    text: "Accept",
+                    text: "Accepter",
                     textColor: colors.acceptForeground),
               ),
               Expanded(
                 child: buildButton(
                   context,
                   color: colors.rejectBackground,
-                  onClick: () => handleVoiceCall(false),
+                  onClick: () => client.komiVideoPhase == 'incoming'
+                      ? KomiVideoCallUi.forHost(client.id).command('refuse')
+                      : handleVoiceCall(false),
                   icon: Icon(
                     Icons.phone_disabled_rounded,
                     color: colors.rejectForeground,
                     size: 14,
                   ),
-                  text: "Dismiss",
+                  text: "Rejeter",
                   textColor: colors.rejectForeground,
                 ),
               )
@@ -1234,7 +1418,9 @@ class _CmControlPanel extends StatelessWidget {
     bind.cmSwitchBack(connId: client.id);
   }
 
-  void handleVoiceCall(bool accept) {
+  Future<void> handleVoiceCall(bool accept) async {
+    if (accept && !await komiEnsureMediaPermission(microphone: true)) return;
+    if (client.disconnected || !client.incomingVoiceCall) return;
     bind.cmHandleIncomingVoiceCall(id: client.id, accept: accept);
   }
 

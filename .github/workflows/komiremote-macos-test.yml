@@ -1,0 +1,216 @@
+name: KomiRemote macOS unsigned test (manual)
+
+# Manual test build only: no release, no tag, no secrets. Never call
+# flutter-build.yml (its upload flag also publishes releases).
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: komiremote-macos-test-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  VCPKG_BINARY_SOURCES: clear
+  VCPKG_COMMIT_ID: 9e593bb18ea69cc5095e012465dcd675a822ed0d
+  MAC_RUST_VERSION: "1.81" # upstream flutter-build.yml (cidre needs 1.81)
+  FLUTTER_VERSION: "3.24.5"
+  NASM_URL: https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+  # nasm.us publishes no checksum file; pinned from the archive fetched 2026-11-02.
+  NASM_SHA256: 0d29bcd8a5fc617333f4549c7c1f93d1866a4a0915c40359e0a8585bb1a5aa75
+
+jobs:
+  bridge:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Linux generation prerequisites (upstream bridge.yml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates clang cmake curl gcc git g++ libclang-dev libgtk-3-dev llvm-dev nasm ninja-build pkg-config wget
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: 1.75.0
+          targets: x86_64-unknown-linux-gnu
+          components: rustfmt
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: 3.22.3
+          cache: false
+      - name: Generate bridge in isolated checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-expand --version 1.0.95 --locked
+          cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('flutter/pubspec.yaml')
+          text = p.read_text()
+          assert text.count('extended_text: 14.0.0') == 1
+          p.write_text(text.replace('extended_text: 14.0.0', 'extended_text: 13.0.0'))
+          PY
+          (cd flutter && flutter pub get)
+          flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
+          cp flutter/macos/Runner/bridge_generated.h flutter/ios/Runner/bridge_generated.h
+          git restore flutter/pubspec.yaml flutter/pubspec.lock
+          for f in src/bridge_generated.rs src/bridge_generated.io.rs flutter/lib/generated_bridge.dart flutter/lib/generated_bridge.freezed.dart flutter/macos/Runner/bridge_generated.h flutter/ios/Runner/bridge_generated.h; do
+            test -s "$f"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: komiremote-macos-bridge
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            src/bridge_generated.rs
+            src/bridge_generated.io.rs
+            flutter/lib/generated_bridge.dart
+            flutter/lib/generated_bridge.freezed.dart
+            flutter/macos/Runner/bridge_generated.h
+            flutter/ios/Runner/bridge_generated.h
+
+  macos:
+    name: macos-${{ matrix.job.arch }}
+    needs: bridge
+    runs-on: ${{ matrix.job.os }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { os: macos-14, target: aarch64-apple-darwin, arch: arm64, extra-build-args: "--screencapturekit" }
+          - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, extra-build-args: "" }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: komiremote-macos-bridge
+          path: .
+      - name: Install build runtime (as upstream)
+        run: |
+          brew install llvm create-dmg
+          command -v pkg-config >/dev/null || brew install pkg-config
+      - name: Install checksum-pinned NASM 2.16.03
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o nasm.zip "$NASM_URL"
+          echo "$NASM_SHA256  nasm.zip" | shasum -a 256 -c -
+          unzip -q nasm.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: false
+      - name: Patch Flutter (as upstream)
+        run: |
+          set -euo pipefail
+          sdk="$(dirname "$(dirname "$(which flutter)")")"
+          git -C "$sdk" apply "$GITHUB_WORKSPACE/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' "$sdk/packages/flutter/lib/src/scheduler/binding.dart"
+          grep -n '_setFramesEnabledState(false);' "$sdk/packages/flutter/lib/src/scheduler/binding.dart"
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: ${{ matrix.job.target }}
+          components: rustfmt
+      - name: Point the About source link at this exact commit
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path('flutter/lib/desktop/pages/desktop_setting_page.dart')
+          old = "'https://github.com/komjordan/KomiRemote/tree/komiremote-macos'"
+          t = p.read_text()
+          assert t.count(old) == 1, 'mac source URL marker missing'
+          p.write_text(t.replace(old, f"'https://github.com/komjordan/KomiRemote/tree/{os.environ['GITHUB_SHA']}'"))
+          PY
+      - name: Prepare pinned vcpkg and native dependencies
+        run: |
+          set -euo pipefail
+          export VCPKG_ROOT="$RUNNER_TEMP/komi-vcpkg"
+          echo "VCPKG_ROOT=$VCPKG_ROOT" >> "$GITHUB_ENV"
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          git -C "$VCPKG_ROOT" checkout --detach "$VCPKG_COMMIT_ID"
+          test "$(git -C "$VCPKG_ROOT" rev-parse HEAD)" = "$VCPKG_COMMIT_ID"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          if ! "$VCPKG_ROOT/vcpkg" install --x-install-root="$VCPKG_ROOT/installed" --disable-metrics; then
+            find "$VCPKG_ROOT/buildtrees" -name '*.log' -newer "$VCPKG_ROOT/vcpkg" -exec tail -n 60 {} + || true
+            exit 1
+          fi
+      - name: Unit tests (macOS update manifest)
+        working-directory: flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter test --timeout 60s test/komi_update_logic_test.dart --plain-name "macOS reads optional mac_* fields"
+      - name: Build KomiRemote.app with official build.py
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.job.arch }}" = "arm64" ]; then
+            MIN_MACOS_VERSION="12.3"
+            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+            sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
+            sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          fi
+          ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
+          git diff --exit-code -- Cargo.lock flutter/pubspec.lock flutter/pubspec.yaml
+          app=flutter/build/macos/Build/Products/Release/KomiRemote.app
+          test -d "$app"
+          test -s "$app/Contents/MacOS/KomiRemote"
+          test -s "$app/Contents/MacOS/service"
+      - name: Ad-hoc sign (codesign -s -), no Developer ID, no notarization
+        run: |
+          set -euo pipefail
+          app=flutter/build/macos/Build/Products/Release/KomiRemote.app
+          bash ./.github/scripts/sign-macos-app.sh "$app" - ./flutter/macos/Runner/Release.entitlements
+      - name: Create dmg and record bundle details
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: *//p' flutter/pubspec.yaml | tr '+' '-')"
+          test "$version" = "1.5.1-85"
+          dmg="KomiRemote-${version}-${{ matrix.job.arch }}.dmg"
+          app=flutter/build/macos/Build/Products/Release/KomiRemote.app
+          CREATE_DMG="$(readlink -f "$(command -v create-dmg)")"
+          sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
+          mkdir -p komiremote-macos-output
+          create-dmg --volname "KomiRemote" --icon "KomiRemote.app" 200 190 --hide-extension "KomiRemote.app" \
+            --window-size 800 400 --app-drop-link 600 185 "komiremote-macos-output/$dmg" "$app"
+          {
+            echo "dmg: $dmg"
+            shasum -a 256 "komiremote-macos-output/$dmg"
+            echo "commit: $GITHUB_SHA run: $GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT image: ${ImageOS:-} ${ImageVersion:-}"
+            for k in CFBundleName CFBundleIdentifier CFBundleShortVersionString CFBundleVersion LSMinimumSystemVersion CFBundleIconFile; do
+              printf '%s: %s\n' "$k" "$(/usr/libexec/PlistBuddy -c "Print :$k" "$app/Contents/Info.plist")"
+            done
+            /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$app/Contents/Info.plist"
+            /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$app/Contents/Info.plist"
+            lipo -archs "$app/Contents/MacOS/KomiRemote" "$app/Contents/MacOS/service" "$app/Contents/Frameworks/liblibrustdesk.dylib" || true
+            nm -gU "$app/Contents/Frameworks/liblibrustdesk.dylib" | grep -E ' _komi_names_(call|free)$' || echo "WARNING: komi_names exports not found"
+            codesign -dv --verbose=2 "$app" 2>&1
+            codesign --verify --deep --strict --verbose=2 "$app" 2>&1
+          } | tee komiremote-macos-output/bundle-info-${{ matrix.job.arch }}.txt
+          cp LICENCE komiremote-macos-output/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: KomiRemote-1.5.1-85-${{ matrix.job.arch }}-unsigned-${{ github.sha }}
+          path: komiremote-macos-output/
+          retention-days: 7
+          if-no-files-found: error

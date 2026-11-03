@@ -1823,7 +1823,10 @@ class InputModel {
     if (isViewCamera) return null;
     double x = offset.dx;
     double y = max(0.0, offset.dy);
-    if (_checkPeerControlProtected(x, y)) {
+    // During host priority the server blocks simulation but still needs pointer
+    // events for the host-side cursor and click indicators.
+    if (!parent.target!.ffiModel.komiHostPriority.value &&
+        _checkPeerControlProtected(x, y)) {
       return null;
     }
 

@@ -870,6 +870,9 @@ message Misc {
     // is rebuilt, and held again, the next time it is shown, before any connection names it
     // by id again, so the shape just selected is always there to give.
     uint64 request_cursor_data = 39;
+    // KomiRemote: the controlled PC offers the controller to view its camera.
+    bool komi_camera_invite = 1001;
+    bool komi_host_priority = 1002;
   }
 }
 
@@ -1000,6 +1003,30 @@ message PortForwardChannel {
   }
 }
 
+message KomiVideoCall {
+  string call_id = 1;
+  uint32 version = 2;
+  uint32 action = 3;
+  string reason = 4;
+  uint32 max_width = 5;
+  uint32 max_height = 6;
+  uint32 max_fps = 7;
+  uint32 max_kbps = 8;
+  bool want_host_camera = 9;
+  bool want_controller_camera = 10;
+  int64 expires_unix_ms = 11;
+  uint32 nonce = 12;
+}
+
+message KomiCallCameraFrame {
+  string call_id = 1;
+  uint32 stream_id = 2;
+  uint32 seq = 3;
+  int64 timestamp_ms = 4;
+  bool key = 5;
+  VideoFrame frame = 6;
+}
+
 message Message {
   oneof union {
     SignedId signed_id = 3;
@@ -1033,5 +1060,9 @@ message Message {
     TerminalAction terminal_action = 31;
     TerminalResponse terminal_response = 32;
     PortForwardChannel port_forward_channel = 33;
+    // KomiRemote v22. Additive. Not Message.video_frame: that field is the
+    // existing screen / view-camera stream.
+    KomiVideoCall komi_video_call = 34;
+    KomiCallCameraFrame komi_call_camera_frame = 35;
   }
 }

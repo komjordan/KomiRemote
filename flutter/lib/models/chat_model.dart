@@ -543,9 +543,8 @@ class ChatModel with ChangeNotifier {
   }
 
   void onVoiceCallIncoming() {
-    if (isConnManager) {
-      _voiceCallStatus.value = VoiceCallStatus.incoming;
-    }
+    // KomiRemote: the controller can also be called by the controlled PC.
+    _voiceCallStatus.value = VoiceCallStatus.incoming;
   }
 
   void closeVoiceCall() {

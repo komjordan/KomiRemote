@@ -4,6 +4,7 @@
 // "Télécharger" only opens the download page in the browser.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
@@ -51,7 +52,7 @@ Future<void> _komiCheckForUpdate() async {
     } finally {
       client.close();
     }
-    final info = komiNewerUpdate(body);
+    final info = komiNewerUpdate(body, mac: Platform.isMacOS);
     if (info == null) return;
     _komiShowUpdateDialog(info);
   } catch (_) {

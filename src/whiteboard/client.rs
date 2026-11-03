@@ -91,8 +91,9 @@ pub fn update_whiteboard(k: String, e: CustomEvent) {
             conn.last_cursor_evt.c += 1;
             conn.last_cursor_evt.tm = Instant::now();
             if cursor.btns == 0 {
-                // Send one movement event every 4.
-                if conn.last_cursor_evt.c > 3 {
+                // On Windows the host-priority cursor must follow isolated moves.
+                // Keep the upstream throttle on other platforms.
+                if cfg!(target_os = "windows") || conn.last_cursor_evt.c > 3 {
                     conn.last_cursor_evt.c = 0;
                     conn.last_cursor_evt.evt = None;
                     tx_send_event(conn, k, e);
@@ -114,6 +115,12 @@ pub fn update_whiteboard(k: String, e: CustomEvent) {
                 tx_send_event(conn, k, click_evt);
             }
         }
+        CustomEvent::Clear => {
+            // A throttled movement must not resurrect an overlay after it is cleared.
+            conn.last_cursor_evt.evt = None;
+            conn.last_cursor_evt.c = 0;
+            tx_send_event(conn, k, e);
+        }
         _ => {
             tx_send_event(conn, k, e);
         }
@@ -128,9 +135,14 @@ fn tx_send_event(conn: &mut Conn, k: String, event: CustomEvent) {
         }
     }
 
-    TX_WHITEBOARD.read().unwrap().as_ref().map(|tx| {
+    let tx = TX_WHITEBOARD.read().unwrap();
+    if let Some(tx) = tx.as_ref() {
         allow_err!(tx.send((k, event)));
-    });
+    } else if matches!(event, CustomEvent::Cursor(_)) {
+        // Whiteboard startup is asynchronous. Retain the most recent position
+        // so a single movement during startup is not lost permanently.
+        conn.last_cursor_evt.evt = Some(event);
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -241,6 +253,11 @@ async fn start_whiteboard_() -> ResultType<()> {
                 for (k, conn) in conns.iter_mut() {
                     if conn.last_cursor_evt.tm.elapsed().as_millis() > 300 {
                         if let Some(evt) = conn.last_cursor_evt.evt.take() {
+                            if let CustomEvent::Cursor(cursor) = &evt {
+                                if cursor.btns == 0 {
+                                    conn.last_cursor_pos = (cursor.x, cursor.y);
+                                }
+                            }
                             allow_err!(stream.send(&Data::Whiteboard((k.clone(), evt))).await);
                             conn.last_cursor_evt.c = 0;
                         }

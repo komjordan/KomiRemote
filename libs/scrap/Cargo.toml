@@ -42,6 +42,9 @@ features = ["dxgi", "dxgi1_2", "dxgi1_5", "dxgi1_6", "d3d11", "winuser", "winerr
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block = "0.1"
+# Keep the same locked nokhwa revision as Windows/Linux, selecting AVFoundation
+# explicitly. TCC is requested by the GUI, never by the capture worker.
+nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_from_raw_parts", features = ["input-avfoundation"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"

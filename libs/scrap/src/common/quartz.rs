@@ -56,7 +56,7 @@ impl crate::TraitCapturer for Capturer {
                         crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())?;
                         frame.surface_to_bgra(self.height());
                         Ok(Frame::PixelBuffer(PixelBuffer {
-                            frame,
+                            frame: PixelStorage::Surface(frame),
                             data: PhantomData,
                             width: self.width(),
                             height: self.height(),
@@ -74,16 +74,36 @@ impl crate::TraitCapturer for Capturer {
     }
 }
 
+enum PixelStorage<'a> {
+    Surface(quartz::Frame),
+    Camera(&'a [u8]),
+}
+
 pub struct PixelBuffer<'a> {
-    frame: quartz::Frame,
+    frame: PixelStorage<'a>,
     data: PhantomData<&'a [u8]>,
     width: usize,
     height: usize,
 }
 
+impl<'a> PixelBuffer<'a> {
+    /// A camera frame borrows tightly packed RGBA bytes owned by its capturer.
+    /// It does not allocate or claim ownership of a screen IOSurface.
+    pub fn from_camera_rgba(bytes: &'a [u8], width: usize, height: usize) -> io::Result<Self> {
+        let expected = width.checked_mul(height).and_then(|n| n.checked_mul(4));
+        if width == 0 || height == 0 || expected != Some(bytes.len()) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid camera RGBA frame"));
+        }
+        Ok(Self { frame: PixelStorage::Camera(bytes), data: PhantomData, width, height })
+    }
+}
+
 impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
     fn data(&self) -> &[u8] {
-        &*self.frame
+        match &self.frame {
+            PixelStorage::Surface(frame) => &*frame,
+            PixelStorage::Camera(bytes) => bytes,
+        }
     }
 
     fn width(&self) -> usize {
@@ -96,12 +116,18 @@ impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
 
     fn stride(&self) -> Vec<usize> {
         let mut v = Vec::new();
-        v.push(self.frame.stride());
+        v.push(match &self.frame {
+            PixelStorage::Surface(frame) => frame.stride(),
+            PixelStorage::Camera(_) => self.width * 4,
+        });
         v
     }
 
     fn pixfmt(&self) -> Pixfmt {
-        Pixfmt::BGRA
+        match &self.frame {
+            PixelStorage::Surface(_) => Pixfmt::BGRA,
+            PixelStorage::Camera(_) => Pixfmt::RGBA,
+        }
     }
 }
 

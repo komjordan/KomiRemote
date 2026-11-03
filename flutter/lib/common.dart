@@ -2570,6 +2570,12 @@ connectMainDesktop(String id,
 /// If [isViewCamera], starts a session only for view camera.
 /// If [isTcpTunneling], starts a session only for tcp tunneling.
 /// If [isRDP], starts a session only for rdp.
+/// Set by the recent-peer menu before connect(). The next matching session
+/// requests a voice call on the first image, then clears this.
+class KomiPendingVoiceCall {
+  static String? peerId;
+}
+
 connect(BuildContext context, String id,
     {bool isFileTransfer = false,
     bool isViewCamera = false,
@@ -2601,7 +2607,7 @@ connect(BuildContext context, String id,
           registry: KomiNameRegistry.configured(), isKnownPeer: (candidate) {
         try {
           final peer = jsonDecode(bind.mainGetPeerSync(id: candidate));
-          return peer is Map && peer['info'] is Map;
+          return peer is Map && peer['komi_peer_file'] == true;
         } catch (_) {
           return false;
         }

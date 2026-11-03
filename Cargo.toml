@@ -113,6 +113,7 @@ qrcode-generator = "4.1"
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
     "winuser",
+    "wingdi",
     "wincrypt",
     "dpapi",
     "winbase",
@@ -158,6 +159,7 @@ tauri-winrt-notification = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
+security-framework = "2.10" # KomiRemote public names: Keychain storage
 cocoa = "0.24"
 dispatch = "0.2"
 core-foundation = "0.9"

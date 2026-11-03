@@ -946,7 +946,13 @@ def build_flutter_dmg(version, features):
     mac_arch = 'arm64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x86_64'
     system2(
         f'FLUTTER_XCODE_ARCHS={mac_arch} FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release')
-    system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/')
+    # PRODUCT_NAME (AppInfo.xcconfig) names the bundle: KomiRemote.app for this fork.
+    app_bundle = 'RustDesk.app'
+    with open('macos/Runner/Configs/AppInfo.xcconfig', encoding='utf-8') as f:
+        for line in f:
+            if line.strip().startswith('PRODUCT_NAME') and '=' in line:
+                app_bundle = line.split('=', 1)[1].strip() + '.app'
+    system2(f'cp -rf ../target/release/service "./build/macos/Build/Products/Release/{app_bundle}/Contents/MacOS/"')
     '''
     system2(
         "create-dmg --volname \"RustDesk Installer\" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 --icon RustDesk.app 200 190 --hide-extension RustDesk.app rustdesk.dmg ./build/macos/Build/Products/Release/RustDesk.app")
@@ -973,7 +979,7 @@ def build_flutter_windows(version, features, skip_portable_pack):
             print("cargo build failed, please check rust source code.")
             exit(-1)
     os.chdir('flutter')
-    system2('flutter build windows --release')
+    system2('flutter build windows --release --no-pub')
     os.chdir('..')
     shutil.copy2('target/release/deps/dylib_virtual_display.dll',
                  flutter_build_dir_2)

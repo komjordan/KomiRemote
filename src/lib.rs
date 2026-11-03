@@ -44,10 +44,14 @@ mod clipboard;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod core_main;
 mod custom_server;
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 mod komi_config;
 pub mod komi_device_name;
 pub mod komi_cursor_tag;
+pub mod komi_host_priority;
+#[cfg(target_os = "windows")]
+mod komi_pills;
+mod komi_video_call;
 mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;

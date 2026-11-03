@@ -41,10 +41,14 @@ typedef _NamesFree = void Function(Pointer<Utf8>);
 
 // Native owns the signing key, TLS requests and validation. Never log payloads.
 Map<String, dynamic> _invokeKomiNames(String request) {
-  if (!Platform.isWindows)
-    throw const PublicNameException('Windows uniquement');
+  if (!Platform.isWindows && !Platform.isMacOS)
+    throw const PublicNameException('Windows et macOS uniquement');
   try {
-    final dll = DynamicLibrary.open('librustdesk.dll');
+    // macOS: liblibrustdesk.dylib is already loaded by the app (same as the
+    // generated bridge in native_model.dart), so look the exports up in-process.
+    final dll = Platform.isMacOS
+        ? DynamicLibrary.process()
+        : DynamicLibrary.open('librustdesk.dll');
     final call =
         dll.lookupFunction<Pointer<Utf8> Function(Pointer<Utf8>), _NamesCall>(
             'komi_names_call');
@@ -120,7 +124,7 @@ class KomiNameManagement {
 
   static KomiNameManagement? configured() {
     final registry = KomiNameRegistry.configured();
-    return Platform.isWindows && registry != null
+    return (Platform.isWindows || Platform.isMacOS) && registry != null
         ? KomiNameManagement(registry)
         : null;
   }

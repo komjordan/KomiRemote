@@ -16,6 +16,7 @@ import '../../common.dart';
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/toolbar.dart';
 import '../../models/model.dart';
+
 import '../../models/input_model.dart';
 import '../../models/platform_model.dart';
 import '../../common/shared_state.dart';
@@ -157,7 +158,15 @@ class _RemotePageState extends State<RemotePage>
           widget.tabController?.state.listen(_onMacOSTabStateChanged);
     }
     Get.put<FFI>(_ffi, tag: widget.id);
+    final pendingVoice = KomiPendingVoiceCall.peerId?.replaceAll(' ', '');
+    final wantVoice = pendingVoice != null &&
+        pendingVoice.isNotEmpty &&
+        pendingVoice == widget.id.replaceAll(' ', '');
+    if (wantVoice) KomiPendingVoiceCall.peerId = null;
     _ffi.imageModel.addCallbackOnFirstImage((String peerId) {
+      if (wantVoice) {
+        bind.sessionRequestVoiceCall(sessionId: _ffi.sessionId);
+      }
       _ffi.canvasModel.activateLocalCursor();
       showKBLayoutTypeChooserIfNeeded(
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
@@ -1002,6 +1011,7 @@ class _RemotePageState extends State<RemotePage>
             QualityMonitor(_ffi.qualityMonitorModel), null, null),
       ),
     );
+
     return Stack(
       children: paints,
     );
@@ -1128,7 +1138,10 @@ class _ImagePaintState extends State<ImagePaint> {
 
           return MouseRegion(
               cursor: cursorOverImage.isTrue
-                  ? c.cursorEmbedded
+                  ? widget.ffi.ffiModel.komiHostPriority.isTrue
+                      // KomiRemote: the host is using its PC, input is paused.
+                      ? _buildDisabledCursor(context, getCursorScale())
+                      : c.cursorEmbedded
                       ? SystemMouseCursors.none
                       // Hide cursor when relative mouse mode is active
                       : widget.ffi.inputModel.relativeMouseMode.value

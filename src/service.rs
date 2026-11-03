@@ -5,6 +5,8 @@ fn main() {}
 
 #[cfg(target_os = "macos")]
 fn main() {
+    // KomiRemote: apply the fork defaults (app name) before any plist path is built.
+    crate::common::load_custom_client();
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 && args[1] == "--write-plists" {
         if let Err(e) = librustdesk::platform::write_plists() {
@@ -13,7 +15,6 @@ fn main() {
         }
         std::process::exit(0);
     }
-    crate::common::load_custom_client();
     hbb_common::init_log(false, "service");
     crate::start_os_service();
 }

@@ -7,7 +7,7 @@ const String kKomiUpdateManifestUrl = 'https://komjordan.fr/komi-version.json';
 
 /// Version of this build. Keep in sync with flutter/pubspec.yaml (1.5.1+71).
 const String kKomiCurrentVersion = '1.5.1';
-const int kKomiCurrentBuild = 71;
+const int kKomiCurrentBuild = 85;
 
 const Duration kKomiUpdateCheckInterval = Duration(hours: 24);
 const Duration kKomiUpdateTimeout = Duration(seconds: 6);
@@ -56,15 +56,23 @@ int? komiCompareVersions(
 }
 
 /// Parses komi-version.json. Any unexpected shape returns null (silent).
-KomiUpdateInfo? komiParseUpdateManifest(String body) {
+///
+/// Windows reads the original top-level fields (version, build, url, notes).
+/// macOS ([mac] true) only reacts when `mac_url` is present; `mac_version`,
+/// `mac_build` and `mac_notes` optionally override the shared values. Older
+/// Windows builds simply ignore the extra `mac_*` keys.
+KomiUpdateInfo? komiParseUpdateManifest(String body, {bool mac = false}) {
   try {
     if (body.length > kKomiUpdateMaxBytes) return null;
     final data = jsonDecode(body);
     if (data is! Map) return null;
-    final version = data['version'];
-    final build = data['build'];
-    final url = data['url'];
-    final notes = data['notes'];
+    final version =
+        mac && data.containsKey('mac_version') ? data['mac_version'] : data['version'];
+    final build =
+        mac && data.containsKey('mac_build') ? data['mac_build'] : data['build'];
+    final url = mac ? data['mac_url'] : data['url'];
+    final notes =
+        mac && data.containsKey('mac_notes') ? data['mac_notes'] : data['notes'];
     if (version is! String || build is! int || url is! String) return null;
     if (_versionParts(version) == null || build < 0) return null;
     final uri = Uri.tryParse(url);
@@ -78,8 +86,9 @@ KomiUpdateInfo? komiParseUpdateManifest(String body) {
 /// The update to announce, or null when the manifest is invalid or not newer.
 KomiUpdateInfo? komiNewerUpdate(String body,
     {String currentVersion = kKomiCurrentVersion,
-    int currentBuild = kKomiCurrentBuild}) {
-  final info = komiParseUpdateManifest(body);
+    int currentBuild = kKomiCurrentBuild,
+    bool mac = false}) {
+  final info = komiParseUpdateManifest(body, mac: mac);
   if (info == null) return null;
   final cmp =
       komiCompareVersions(info.version, info.build, currentVersion, currentBuild);

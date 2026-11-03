@@ -149,6 +149,25 @@ pub struct Client {
     pub from_switch: bool,
     pub in_voice_call: bool,
     pub incoming_voice_call: bool,
+    // KomiRemote: this PC called the controller and waits for its answer.
+    #[serde(default)]
+    pub outgoing_voice_call: bool,
+    // KomiRemote: a camera invite was asked while the camera option is off.
+    #[serde(default)]
+    pub komi_camera_disabled: bool,
+    #[serde(default)]
+    pub komi_video_phase: String,
+    #[serde(default)]
+    pub komi_video_call_id: String,
+    #[serde(default)]
+    pub komi_video_local_camera: bool,
+    #[serde(default)]
+    pub komi_video_remote_camera: bool,
+    #[serde(default)]
+    pub in_video_call: bool,
+    // Monotonic acceptance time; camera preview/ringing never starts this clock.
+    #[serde(skip)]
+    pub komi_video_accepted_at: Option<std::time::Instant>,
     #[serde(skip)]
     #[cfg(not(any(target_os = "ios")))]
     tx: UnboundedSender<Data>,
@@ -196,6 +215,7 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
     fn show_elevation(&self, show: bool);
 
     fn update_voice_call_state(&self, client: &Client);
+    fn komi_video_frame(&self, _id: i32, _path: &str, _seq: u32, _stream: u32, _w: u32, _h: u32) {}
 
     fn file_transfer_log(&self, action: &str, log: &str);
 }
@@ -261,12 +281,22 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             tx,
             in_voice_call: false,
             incoming_voice_call: false,
+            outgoing_voice_call: false,
+            komi_camera_disabled: false,
+            komi_video_phase: String::new(),
+            komi_video_call_id: String::new(),
+            komi_video_local_camera: false,
+            komi_video_remote_camera: false,
+            in_video_call: false,
+            komi_video_accepted_at: None,
         };
         CLIENTS
             .write()
             .unwrap()
             .retain(|_, c| !(c.disconnected && c.peer_id == client.peer_id));
         CLIENTS.write().unwrap().insert(id, client.clone());
+        #[cfg(target_os = "windows")]
+        crate::komi_pills::ensure_started();
         self.ui_handler.add_connection(&client);
     }
 
@@ -325,6 +355,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
     fn voice_call_started(&self, id: i32) {
         if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
             client.incoming_voice_call = false;
+            client.outgoing_voice_call = false;
             client.in_voice_call = true;
             self.ui_handler.update_voice_call_state(client);
         }
@@ -334,6 +365,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
     fn voice_call_incoming(&self, id: i32) {
         if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
             client.incoming_voice_call = true;
+            client.outgoing_voice_call = false;
             client.in_voice_call = false;
             self.ui_handler.update_voice_call_state(client);
         }
@@ -343,7 +375,49 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
     fn voice_call_closed(&self, id: i32, _reason: &str) {
         if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
             client.incoming_voice_call = false;
+            client.outgoing_voice_call = false;
             client.in_voice_call = false;
+            self.ui_handler.update_voice_call_state(client);
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn komi_voice_call_outgoing(&self, id: i32) {
+        if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
+            client.incoming_voice_call = false;
+            client.in_voice_call = false;
+            client.outgoing_voice_call = true;
+            self.ui_handler.update_voice_call_state(client);
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn komi_camera_disabled(&self, id: i32) {
+        if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
+            // One-shot flag: the UI asks the user, then it is cleared again.
+            client.komi_camera_disabled = true;
+            self.ui_handler.update_voice_call_state(client);
+            client.komi_camera_disabled = false;
+        }
+    }
+
+    fn komi_video_state(&self, id: i32, phase: String, local: bool, remote: bool, call_id: String) {
+        if let Some(client) = CLIENTS.write().unwrap().get_mut(&id) {
+            if phase == "active" && !call_id.starts_with("cam:") {
+                if !client.in_video_call || client.komi_video_call_id != call_id {
+                    client.komi_video_accepted_at = Some(std::time::Instant::now());
+                }
+            } else {
+                client.komi_video_accepted_at = None;
+            }
+            client.in_video_call = phase == "active";
+            client.komi_video_phase = phase;
+            client.komi_video_call_id = call_id;
+            client.komi_video_local_camera = local;
+            client.komi_video_remote_camera = remote;
+            if matches!(client.komi_video_phase.as_str(), "idle" | "ended") {
+                crate::komi_video_call::cm_clear(id);
+            }
             self.ui_handler.update_voice_call_state(client);
         }
     }
@@ -369,6 +443,44 @@ pub fn authorize(id: i32) {
         client.authorized = true;
         allow_err!(client.tx.send(Data::Authorize));
     };
+}
+
+/// KomiRemote: what the host's floating pills need to know about a session.
+#[cfg(target_os = "windows")]
+pub struct KomiPillClient {
+    pub id: i32,
+    pub name: String,
+    pub in_voice_call: bool,
+    pub is_view_camera: bool,
+    pub is_control: bool,
+    pub in_video_call: bool,
+    pub is_camera_share: bool,
+    pub video_accepted_at: Option<std::time::Instant>,
+}
+
+#[cfg(target_os = "windows")]
+pub fn komi_pill_clients() -> Vec<KomiPillClient> {
+    let mut v: Vec<KomiPillClient> = CLIENTS
+        .read()
+        .unwrap()
+        .values()
+        .filter(|c| c.authorized && !c.disconnected)
+        .map(|c| KomiPillClient {
+            id: c.id,
+            name: c.name.clone(),
+            in_voice_call: c.in_voice_call,
+            is_view_camera: c.is_view_camera,
+            is_control: !c.is_file_transfer
+                && !c.is_view_camera
+                && !c.is_terminal
+                && c.port_forward.is_empty(),
+            in_video_call: c.in_video_call,
+            is_camera_share: c.komi_video_call_id.starts_with("cam:"),
+            video_accepted_at: c.komi_video_accepted_at,
+        })
+        .collect();
+    v.sort_by_key(|c| c.id);
+    v
 }
 
 #[inline]
@@ -673,6 +785,38 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                 Data::CloseVoiceCall(reason) => {
                                     self.cm.voice_call_closed(self.conn_id, reason.as_str());
                                 }
+                                Data::KomiVoiceCallOutgoing => {
+                                    self.cm.komi_voice_call_outgoing(self.conn_id);
+                                }
+                                Data::KomiCameraDisabled => {
+                                    self.cm.komi_camera_disabled(self.conn_id);
+                                }
+                                Data::KomiVideoCallState { phase, local_camera, remote_camera, call_id, .. } => {
+                                    self.cm.komi_video_state(self.conn_id, phase, local_camera, remote_camera, call_id);
+                                }
+                                Data::KomiCallCameraJpeg { conn_id, call_id, stream_id, seq, width, height, .. } => {
+                                    if let Ok(bytes) = self.stream.next_raw().await {
+                                        let id = if conn_id == 0 { self.conn_id } else { conn_id };
+                                        // Always consume the raw payload first, even when stale,
+                                        // to preserve framing for the following IPC message.
+                                        let valid = id == self.conn_id && CLIENTS.read().unwrap().get(&id).map(|c|
+                                            c.komi_video_call_id == call_id &&
+                                            (c.komi_video_phase == "active" ||
+                                             (c.komi_video_phase == "outgoing" && stream_id == crate::komi_video_call::STREAM_HOST))
+                                        ).unwrap_or(false);
+                                        if !valid { continue; }
+                                        if let Some(path) = crate::komi_video_call::cm_store_jpeg(id, stream_id, &bytes) {
+                                            self.cm.ui_handler.komi_video_frame(
+                                                id,
+                                                &path.to_string_lossy(),
+                                                seq,
+                                                stream_id,
+                                                width,
+                                                height,
+                                            );
+                                        }
+                                    }
+                                }
                                 #[cfg(target_os = "windows")]
                                 Data::ClipboardNonFile(_) => {
                                     match crate::clipboard::check_clipboard_cm() {
@@ -960,6 +1104,12 @@ pub async fn start_listen<T: InvokeUiCM>(
             }
             Some(Data::CloseVoiceCall(reason)) => {
                 cm.voice_call_closed(current_id, reason.as_str());
+            }
+            Some(Data::KomiCameraDisabled) => {
+                cm.komi_camera_disabled(current_id);
+            }
+            Some(Data::KomiVideoCallState { phase, local_camera, remote_camera, call_id, .. }) => {
+                cm.komi_video_state(current_id, phase, local_camera, remote_camera, call_id);
             }
             None => {
                 break;
@@ -1741,6 +1891,47 @@ pub fn handle_incoming_voice_call(id: i32, accept: bool) {
         #[cfg(not(any(target_os = "ios")))]
         allow_err!(client.tx.send(Data::VoiceCallResponse(accept)));
     };
+}
+
+// KomiRemote: the controlled PC calls the controller of connection `id`.
+#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[inline]
+pub fn komi_request_voice_call(id: i32) {
+    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
+        #[cfg(not(any(target_os = "ios")))]
+        allow_err!(client.tx.send(Data::KomiRequestVoiceCall));
+    };
+}
+
+// KomiRemote: offer the controller of connection `id` to view this PC's camera.
+// `enable_camera` is true only after the user explicitly agreed to turn it on.
+#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[inline]
+pub fn komi_camera_invite(id: i32, enable_camera: bool) {
+    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
+        #[cfg(not(any(target_os = "ios")))]
+        allow_err!(client.tx.send(Data::KomiCameraInvite(enable_camera)));
+    };
+}
+
+#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[inline]
+pub fn komi_video_call(id: i32, cmd: &str, enabled: bool) {
+    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
+        #[cfg(not(any(target_os = "ios")))]
+        allow_err!(client.tx.send(Data::KomiVideoCallCmd {
+            cmd: cmd.to_owned(),
+            enabled,
+        }));
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn komi_video_call_hangup(id: i32) {
+    #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+    komi_video_call(id, "hangup", false);
+    #[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
+    let _ = id;
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]

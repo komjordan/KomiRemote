@@ -22,7 +22,8 @@ class KomiV14(unittest.TestCase):
         self.assertIn("clear_peer_cursor_controller(self.0)", conn)
         inp = read("src/server/input_service.rs")
         self.assertIn("controller_name", inp)
-        self.assertIn("broadcast_name", inp)
+        self.assertIn("moving_name", inp)
+        self.assertIn("named_target", inp)
 
     def test_client_forwards_sanitized_name(self):
         src = read("src/flutter.rs")
@@ -34,7 +35,8 @@ class KomiV14(unittest.TestCase):
         page = read("flutter/lib/desktop/pages/remote_page.dart")
         self.assertIn("const PeerCursorNameTagPaint()", page)
         model = read("flutter/lib/models/model.dart")
-        self.assertIn("_setPeerControllerName(evt['name'])", model)
+        self.assertIn("_setPeerControllerName(evt['controller_name'])", model)
+        self.assertIn('"controller_name"', read("src/flutter.rs"))
 
     def test_display_name_priority(self):
         client = read("src/client.rs")

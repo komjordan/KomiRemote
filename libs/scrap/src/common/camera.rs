@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use nokhwa::{
     pixel_format::RgbAFormat,
     query,
@@ -17,16 +17,18 @@ use base::message_proto::{DisplayInfo, Resolution};
 use crate::AdapterDevice;
 
 use crate::common::{bail, ResultType};
-use crate::{Frame, TraitCapturer};
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+use crate::PixelBuffer;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-use crate::{PixelBuffer, Pixfmt};
+use crate::Pixfmt;
+use crate::{Frame, TraitCapturer};
 
 pub const PRIMARY_CAMERA_IDX: usize = 0;
 lazy_static::lazy_static! {
     static ref SYNC_CAMERA_DISPLAYS: Arc<Mutex<Vec<DisplayInfo>>> = Arc::new(Mutex::new(Vec::new()));
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 const CAMERA_NOT_SUPPORTED: &str = "This platform doesn't support camera yet";
 
 pub struct Cameras;
@@ -36,8 +38,44 @@ pub fn primary_camera_exists() -> bool {
     Cameras::exists(PRIMARY_CAMERA_IDX)
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 impl Cameras {
+    /// Enumerate identifiers and labels without opening devices or locking caches.
+    pub fn input_devices() -> ResultType<Vec<(String, String)>> {
+        Ok(query(ApiBackend::Auto)?
+            .iter()
+            .map(|info| {
+                // AVFoundation discovery returns ordinal indexes; `misc` contains
+                // AVCaptureDevice.uniqueID. Open by that ID, not a reorderable slot.
+                #[cfg(target_os = "macos")]
+                {
+                    return (format!("string:{}", info.misc()), info.human_name().clone());
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let id = match info.index() {
+                        CameraIndex::Index(index) => format!("index:{index}"),
+                        CameraIndex::String(index) => format!("string:{index}"),
+                    };
+                    (id, info.human_name().clone())
+                }
+            })
+            .collect())
+    }
+
+    pub fn get_input_capturer(id: &str) -> ResultType<Box<dyn TraitCapturer>> {
+        let index = if let Some(index) = id.strip_prefix("index:") {
+            CameraIndex::Index(index.parse::<u32>()?)
+        } else if let Some(index) = id.strip_prefix("string:") {
+            if index.is_empty() {
+                bail!("Invalid camera input identifier");
+            }
+            CameraIndex::String(index.to_owned())
+        } else {
+            bail!("Invalid camera input identifier");
+        };
+        Ok(Box::new(CameraCapturer::from_index(index)?))
+    }
     pub fn all_info() -> ResultType<Vec<DisplayInfo>> {
         match query(ApiBackend::Auto) {
             Ok(cameras) => {
@@ -123,6 +161,12 @@ impl Cameras {
     }
 
     fn create_camera(index: &CameraIndex) -> ResultType<Camera> {
+        // Permission is requested explicitly by the GUI on the main thread.
+        // Never prompt from a capture worker, discovery, or a privileged helper.
+        #[cfg(target_os = "macos")]
+        if !nokhwa::nokhwa_check() {
+            bail!("Camera permission required: authorize camera access in the local KomiRemote window");
+        }
         let format_type = if cfg!(target_os = "linux") {
             RequestedFormatType::None
         } else {
@@ -139,7 +183,7 @@ impl Cameras {
     }
 
     pub fn get_camera_resolution(index: usize) -> ResultType<Resolution> {
-        let index = CameraIndex::Index(index as u32);
+        let index = Self::index_for_position(index)?;
         let camera = Self::create_camera(&index)?;
         let resolution = camera.resolution();
         Ok(Resolution {
@@ -156,10 +200,38 @@ impl Cameras {
     pub fn get_capturer(current: usize) -> ResultType<Box<dyn TraitCapturer>> {
         Ok(Box::new(CameraCapturer::new(current)?))
     }
+
+    fn index_for_position(current: usize) -> ResultType<CameraIndex> {
+        #[cfg(target_os = "macos")]
+        {
+            let devices = query(ApiBackend::Auto)?;
+            let info = devices
+                .get(current)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Camera disconnected"))?;
+            Ok(CameraIndex::String(info.misc().clone()))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Ok(CameraIndex::Index({
+                if current > u32::MAX as usize {
+                    bail!("Invalid camera index");
+                }
+                current as u32
+            }))
+        }
+    }
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 impl Cameras {
+    pub fn input_devices() -> ResultType<Vec<(String, String)>> {
+        Ok(Vec::new())
+    }
+
+    pub fn get_input_capturer(_id: &str) -> ResultType<Box<dyn TraitCapturer>> {
+        bail!(CAMERA_NOT_SUPPORTED);
+    }
+
     pub fn all_info() -> ResultType<Vec<DisplayInfo>> {
         return Ok(Vec::new());
     }
@@ -181,20 +253,24 @@ impl Cameras {
     }
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub struct CameraCapturer {
     camera: Camera,
     data: Vec<u8>,
     last_data: Vec<u8>, // for faster compare and copy
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 pub struct CameraCapturer;
 
 impl CameraCapturer {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     fn new(current: usize) -> ResultType<Self> {
-        let index = CameraIndex::Index(current as u32);
+        Self::from_index(Cameras::index_for_position(current)?)
+    }
+
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+    fn from_index(index: CameraIndex) -> ResultType<Self> {
         let camera = Cameras::create_camera(&index)?;
         Ok(CameraCapturer {
             camera,
@@ -204,16 +280,23 @@ impl CameraCapturer {
     }
 
     #[allow(dead_code)]
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     fn new(_current: usize) -> ResultType<Self> {
         bail!(CAMERA_NOT_SUPPORTED);
     }
 }
 
 impl TraitCapturer for CameraCapturer {
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     fn frame<'a>(&'a mut self, _timeout: std::time::Duration) -> std::io::Result<Frame<'a>> {
-        // TODO: move this check outside `frame`.
+        #[cfg(target_os = "macos")]
+        if !nokhwa::nokhwa_check() {
+            let _ = self.camera.stop_stream();
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Camera access is not authorized",
+            ));
+        }
         if !self.camera.is_stream_open() {
             if let Err(e) = self.camera.open_stream() {
                 return Err(io::Error::new(
@@ -228,7 +311,7 @@ impl TraitCapturer for CameraCapturer {
                     Ok(decoded) => {
                         self.data = decoded.as_raw().to_vec();
                         crate::would_block_if_equal(&mut self.last_data, &self.data)?;
-                        // FIXME: macos's PixelBuffer cannot be directly created from bytes slice.
+                        // Decoder output is tightly packed RGBA, not a Quartz IOSurface.
                         cfg_if::cfg_if! {
                             if #[cfg(any(target_os = "linux", target_os = "windows"))] {
                                 Ok(Frame::PixelBuffer(PixelBuffer::new(
@@ -237,12 +320,14 @@ impl TraitCapturer for CameraCapturer {
                                     decoded.width() as usize,
                                     decoded.height() as usize,
                                 )))
-                            } else {
-                                Err(io::Error::new(
-                                    io::ErrorKind::Other,
-                                    format!("Camera is not supported on this platform yet"),
-                                ))
+                            } else if #[cfg(target_os = "macos")] {
+                                Ok(Frame::PixelBuffer(PixelBuffer::from_camera_rgba(
+                                    &self.data,
+                                    decoded.width() as usize,
+                                    decoded.height() as usize,
+                                )?))
                             }
+
                         }
                     }
                     Err(e) => Err(io::Error::new(
@@ -258,7 +343,7 @@ impl TraitCapturer for CameraCapturer {
         }
     }
 
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     fn frame<'a>(&'a mut self, _timeout: std::time::Duration) -> std::io::Result<Frame<'a>> {
         Err(io::Error::new(
             io::ErrorKind::Other,

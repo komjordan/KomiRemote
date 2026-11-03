@@ -14,6 +14,7 @@ import '../common.dart';
 import '../common/formatter/id_formatter.dart';
 import '../desktop/pages/server_page.dart' as desktop;
 import '../desktop/widgets/tabbar_widget.dart';
+import '../desktop/widgets/komi_video_call_window.dart';
 import '../mobile/pages/server_page.dart';
 import 'model.dart';
 
@@ -697,6 +698,7 @@ class ServerModel with ChangeNotifier {
     try {
       final id = int.parse(evt['id'] as String);
       final close = (evt['close'] as String) == 'true';
+      unawaited(KomiVideoCallUi.releaseHost(id));
       if (_clients.any((c) => c.id == id)) {
         final index = _clients.indexWhere((client) => client.id == id);
         if (index >= 0) {
@@ -724,6 +726,7 @@ class ServerModel with ChangeNotifier {
   /// peers to go. The sessions end either way; only the close reason differs, and with it
   /// whether the peer is allowed to reconnect. See `ipc::Data::CmWindowClosed`.
   Future<void> closeAll({bool byOperator = true}) async {
+    await Future.wait(_clients.map((client) => KomiVideoCallUi.releaseHost(client.id)));
     await Future.wait(_clients.map((client) => byOperator
         ? bind.cmCloseConnection(connId: client.id)
         : bind.cmCloseConnectionWindow(connId: client.id)));
@@ -751,6 +754,27 @@ class ServerModel with ChangeNotifier {
       if (index != -1) {
         _clients[index].inVoiceCall = client.inVoiceCall;
         _clients[index].incomingVoiceCall = client.incomingVoiceCall;
+        _clients[index].outgoingVoiceCall = client.outgoingVoiceCall;
+        _clients[index].komiVideoPhase = client.komiVideoPhase;
+        _clients[index].komiVideoCallId = client.komiVideoCallId;
+        _clients[index].komiVideoLocalCamera = client.komiVideoLocalCamera;
+        _clients[index].komiVideoRemoteCamera = client.komiVideoRemoteCamera;
+        _clients[index].inVideoCall = client.inVideoCall;
+        KomiVideoCallUi.forHost(client.id).apply(client.komiVideoPhase,
+            client.komiVideoLocalCamera, client.komiVideoRemoteCamera,
+            nextCallId: client.komiVideoCallId,
+            nextMode: client.komiVideoCallId.startsWith('cam:')
+                ? 'show-camera'
+                : 'video');
+        if (client.komiVideoPhase == 'incoming') {
+          windowOnTop(null);
+        }
+        if (isWindows && client.komiCameraDisabled) {
+          // Keep the Windows host's explicit show-camera consent path. On Mac,
+          // retain the permission-gated camera action and ordinary login approval.
+          bind.cmSwitchPermission(
+              connId: client.id, name: 'komi-camera-invite', enabled: true);
+        }
         if (client.incomingVoiceCall) {
           if (isAndroid) {
             showVoiceCallDialog(client);
@@ -766,6 +790,15 @@ class ServerModel with ChangeNotifier {
     } catch (e) {
       debugPrint("updateVoiceCallState failed: $e");
     }
+  }
+
+  void komiVideoFrame(int id, String path, int seq, int stream) {
+    final index = _clients.indexWhere((element) => element.id == id);
+    if (index == -1) return;
+    // Engine stream IDs identify the sender: 1 controller, 2 host.
+    // Normalize the host's own stream to local preview 0 for the renderer.
+    KomiVideoCallUi.forHost(id).frame(path, seq, stream == 2 ? 0 : stream);
+    // Video pixels update in their own engine; do not rebuild CM at camera FPS.
   }
 
   void androidUpdatekeepScreenOn() async {
@@ -818,6 +851,17 @@ class Client {
   bool fromSwitch = false;
   bool inVoiceCall = false;
   bool incomingVoiceCall = false;
+  // KomiRemote: this PC called the controller and waits for its answer.
+  bool outgoingVoiceCall = false;
+  // KomiRemote: one-shot, a camera invite was asked while the camera option is off.
+  bool komiCameraDisabled = false;
+  String komiVideoPhase = '';
+  String komiVideoCallId = '';
+  bool komiVideoLocalCamera = false;
+  bool komiVideoRemoteCamera = false;
+  bool inVideoCall = false;
+  String komiVideoPath = '';
+  int komiVideoSeq = 0;
 
   RxInt unreadChatMessageCount = 0.obs;
 
@@ -847,6 +891,13 @@ class Client {
     fromSwitch = json['from_switch'];
     inVoiceCall = json['in_voice_call'];
     incomingVoiceCall = json['incoming_voice_call'];
+    outgoingVoiceCall = json['outgoing_voice_call'] ?? false;
+    komiCameraDisabled = json['komi_camera_disabled'] ?? false;
+    komiVideoPhase = json['komi_video_phase'] ?? '';
+    komiVideoCallId = json['komi_video_call_id'] ?? '';
+    komiVideoLocalCamera = json['komi_video_local_camera'] ?? false;
+    komiVideoRemoteCamera = json['komi_video_remote_camera'] ?? false;
+    inVideoCall = json['in_video_call'] ?? false;
   }
 
   Map<String, dynamic> toJson() {
@@ -872,6 +923,13 @@ class Client {
     data['from_switch'] = fromSwitch;
     data['in_voice_call'] = inVoiceCall;
     data['incoming_voice_call'] = incomingVoiceCall;
+    data['outgoing_voice_call'] = outgoingVoiceCall;
+    data['komi_camera_disabled'] = komiCameraDisabled;
+    data['komi_video_phase'] = komiVideoPhase;
+    data['komi_video_call_id'] = komiVideoCallId;
+    data['komi_video_local_camera'] = komiVideoLocalCamera;
+    data['komi_video_remote_camera'] = komiVideoRemoteCamera;
+    data['in_video_call'] = inVideoCall;
     return data;
   }
 

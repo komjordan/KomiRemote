@@ -680,7 +680,7 @@ impl InvokeUiSession for FlutterHandler {
                 ("y", &cp.y.to_string()),
                 // KomiRemote: name tag of the viewer moving the cursor (may be empty).
                 (
-                    "name",
+                    "controller_name",
                     &crate::komi_cursor_tag::sanitize_controller_name(&cp.controller_name),
                 ),
             ],
@@ -1073,6 +1073,45 @@ impl InvokeUiSession for FlutterHandler {
 
     fn on_voice_call_waiting(&self) {
         self.push_event::<&str>("on_voice_call_waiting", &[], &[]);
+    }
+
+    fn komi_camera_invite(&self) {
+        self.push_event::<&str>("komi_camera_invite", &[], &[]);
+    }
+
+    fn komi_host_priority(&self, active: bool) {
+        self.push_event(
+            "komi_host_priority",
+            &[("active", if active { "true" } else { "false" })],
+            &[],
+        );
+    }
+
+    fn update_komi_video_call_state(&self, phase: &str, local: bool, remote: bool, call_id: &str) {
+        self.push_event(
+            "komi_video_call",
+            &[
+                ("phase", phase),
+                ("local", if local { "1" } else { "0" }),
+                ("remote", if remote { "1" } else { "0" }),
+                ("call_id", call_id),
+            ],
+            &[],
+        );
+    }
+
+    fn komi_video_frame(&self, path: &str, seq: u32, stream: u32, w: u32, h: u32) {
+        self.push_event(
+            "komi_video_frame",
+            &[
+                ("path", path),
+                ("seq", &seq.to_string()),
+                ("stream", &stream.to_string()),
+                ("w", &w.to_string()),
+                ("h", &h.to_string()),
+            ],
+            &[],
+        );
     }
 
     fn on_voice_call_incoming(&self) {
@@ -1558,6 +1597,20 @@ pub mod connection_manager {
                 log::debug!("call_main_service_set_by_name fail,{}", e);
             }
             self.push_event("update_voice_call_state", &[("client", &client_json)]);
+        }
+
+        fn komi_video_frame(&self, id: i32, path: &str, seq: u32, stream: u32, w: u32, h: u32) {
+            self.push_event(
+                "komi_video_frame",
+                &[
+                    ("id", &id.to_string()),
+                    ("path", &path.to_owned()),
+                    ("seq", &seq.to_string()),
+                    ("stream", &stream.to_string()),
+                    ("w", &w.to_string()),
+                    ("h", &h.to_string()),
+                ],
+            );
         }
 
         fn file_transfer_log(&self, action: &str, log: &str) {

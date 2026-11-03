@@ -1,4 +1,4 @@
-//! Public Windows fork defaults. No disk, network, credentials or overwrite settings.
+//! Public Windows/macOS fork defaults. No disk, network, credentials or overwrite settings.
 use std::collections::HashMap;
 use std::sync::{Once, RwLock};
 

@@ -54,11 +54,17 @@ L’exécutable n’est pas signé : Windows SmartScreen peut afficher un averti
 
 ## Code source correspondant
 
-La version portable publiée correspond au tag [`v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71). La branche `main` contient les évolutions ultérieures.
+La version portable publiée correspond au tag [`v1.5.1-komi.71`](https://github.com/komjordan/KomiRemote/tree/v1.5.1-komi.71). Les builds de test ci-dessous sont distinctes de cette version publiée ; leurs évolutions ne sont pas encore toutes intégrées dans `main`.
+
+## État des plateformes
+
+- **Windows — build de test v29 :** validée par le propriétaire. Cette validation ne change pas le tag de la version publiée ci-dessus.
+- **macOS — build de test 1.5.1-85 :** [compilation GitHub Actions réussie, Apple Silicon et Intel](https://github.com/komjordan/KomiRemote/actions/runs/41680507345). Les appels audio/vidéo restent à valider en conditions réelles sur Mac. Les paquets de test sont signés ad hoc, sans signature Developer ID ni notarisation ; ce n’est pas une nouvelle release publique.
+- **Linux et Android :** développements en cours, non présentés ici comme des versions publiées ou validées.
 
 ## Captures
 
-Captures de KomiRemote v1.5.1-komi.71. Les IDs de connexion sont floutés ; les noms d’appareils restent visibles.
+Les captures historiques proviennent de KomiRemote v1.5.1-komi.71 ; la demande d’appel vidéo et les pastilles hôte montrent les évolutions Windows approuvées le 3 novembre 2026. Les IDs des captures historiques sont floutés ; les noms d’appareils restent visibles. La nouvelle capture d’appel conserve l’ID visible tel qu’approuvé.
 
 ### Accueil
 
@@ -68,9 +74,22 @@ Captures de KomiRemote v1.5.1-komi.71. Les IDs de connexion sont floutés ; les 
 
 ![À propos de KomiRemote](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-a-propos.png)
 
-### Demande de connexion
+### Demande de connexion et appel vidéo entrant
 
-![Demande de connexion](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png)
+Deux demandes distinctes, présentées côte à côte : la connexion au bureau, puis l’appel vidéo depuis une session déjà connectée.
+
+<table>
+  <tr>
+    <th>Demande de connexion</th>
+    <th>Appel vidéo entrant — hôte</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png" alt="Demande de connexion au bureau distant"></td>
+    <td valign="top"><img src="docs/komiremote/screenshots/2026-11-03/appel-video-entrant.png" alt="Hôte : appel vidéo entrant de Kom Jordan, boutons Accepter et Rejeter"></td>
+  </tr>
+</table>
+
+Sur petit écran, ouvrir la [demande de connexion](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-demande-connexion.png) ou l’[appel vidéo entrant](docs/komiremote/screenshots/2026-11-03/appel-video-entrant.png) pour lire la capture à sa taille d’origine.
 
 ### Nom de l’appareil
 
@@ -84,15 +103,31 @@ Le nom choisi complète l’ID numérique et peut être vérifié, appliqué ou 
 
 ![Nom de connexion personnalisé](docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-nom-connexion-personnalise.png)
 
-### Barre de session
+### Barres de session — mode minimal
 
-**Mode minimal**
+**Hôte — pastilles compactes**
+
+<p align="center">
+  <img src="docs/komiremote/screenshots/2026-11-03/pastilles-compactes.png" alt="Hôte : pastilles compactes de contrôle, appel vocal et caméra">
+</p>
+
+**Contrôleur — barre minimale**
 
 <p align="center">
   <img src="docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils-minimale.png" alt="Barre de session minimale">
 </p>
 
-**Mode complet**
+### Barres de session — mode complet
+
+**Hôte — pastilles dépliées**
+
+<p align="center">
+  <img src="docs/komiremote/screenshots/2026-11-03/pastilles-depliees.png" alt="Hôte : pastilles dépliées Contrôle, Appel vocal avec durée et Caméra">
+</p>
+
+La capture hôte montre les pastilles **Contrôle**, **Appel** (vocal) et **Caméra**. Elle ne représente pas un appel vidéo actif : le partage de caméra et l’appel vocal ne sont pas renommés en appel vidéo.
+
+**Contrôleur — barre complète**
 
 <p align="center">
   <img src="docs/komiremote/screenshots/v1.5.1-komi.71/komiremote-v16-barre-outils-complete.png" alt="Barre de session complète">
@@ -106,6 +141,19 @@ Voir la [documentation de compilation RustDesk](https://rustdesk.com/docs/en/dev
 ```powershell
 python build.py --portable --flutter --hwcodec --vram
 ```
+
+## Compilation (macOS — branche de test)
+
+Les sources de la build Mac 1.5.1-85 se trouvent sur [`work/macos-video-v2-20261103`](https://github.com/komjordan/KomiRemote/tree/work/macos-video-v2-20261103), au commit [`1e6ef555c89d41d11a4607edae7bc05752b869b9`](https://github.com/komjordan/KomiRemote/commit/1e6ef555c89d41d11a4607edae7bc05752b869b9), et non dans une release 85 ni nécessairement dans `main`.
+
+```sh
+git clone --branch work/macos-video-v2-20261103 --recurse-submodules https://github.com/komjordan/KomiRemote.git
+cd KomiRemote
+git checkout 1e6ef555c89d41d11a4607edae7bc05752b869b9
+git submodule update --init --recursive
+```
+
+Suivre ensuite la recette complète du [workflow macOS de cette révision](https://github.com/komjordan/KomiRemote/blob/1e6ef555c89d41d11a4607edae7bc05752b869b9/.github/workflows/komiremote-macos-test.yml) : génération du bridge, dépendances natives épinglées, Flutter 3.24.5, Rust 1.81, compilation et signature ad hoc. Les étapes et options diffèrent entre Apple Silicon et Intel ; une simple commande Flutter ne remplace pas cette préparation. Après intégration revue par l’intégrateur, `main` pourra servir de base ; ce README ne prétend pas que cette intégration est déjà faite.
 
 ## Licence et copyright
 
