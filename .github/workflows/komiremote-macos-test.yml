@@ -185,7 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^version: *//p' flutter/pubspec.yaml | tr '+' '-')"
-          test "$version" = "1.5.1-85"
+          test "$version" = "1.5.1-89"
           dmg="KomiRemote-${version}-${{ matrix.job.arch }}.dmg"
           app=flutter/build/macos/Build/Products/Release/KomiRemote.app
           CREATE_DMG="$(readlink -f "$(command -v create-dmg)")"
@@ -202,7 +202,21 @@ jobs:
             done
             /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$app/Contents/Info.plist"
             /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$app/Contents/Info.plist"
-            lipo -archs "$app/Contents/MacOS/KomiRemote" "$app/Contents/MacOS/service" "$app/Contents/Frameworks/liblibrustdesk.dylib" || true
+            expected_arch="${{ matrix.job.arch }}"
+            for bin in \
+              "$app/Contents/MacOS/KomiRemote" \
+              "$app/Contents/MacOS/service" \
+              "$app/Contents/Frameworks/liblibrustdesk.dylib"
+            do
+              archs="$(lipo -archs "$bin")"
+              echo "lipo $(basename "$bin"): $archs"
+              test "$archs" = "$expected_arch"
+            done
+            echo "komi-macos-workflow-rev=1.5.1-89"
+            echo "--- entitlements app ---"
+            codesign -d --entitlements :- "$app" 2>/dev/null
+            echo "--- entitlements service ---"
+            codesign -d --entitlements :- "$app/Contents/MacOS/service" 2>/dev/null
             nm -gU "$app/Contents/Frameworks/liblibrustdesk.dylib" | grep -E ' _komi_names_(call|free)$' || echo "WARNING: komi_names exports not found"
             codesign -dv --verbose=2 "$app" 2>&1
             codesign --verify --deep --strict --verbose=2 "$app" 2>&1
@@ -210,7 +224,7 @@ jobs:
           cp LICENCE komiremote-macos-output/
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: KomiRemote-1.5.1-85-${{ matrix.job.arch }}-unsigned-${{ github.sha }}
+          name: KomiRemote-1.5.1-89-${{ matrix.job.arch }}-unsigned-${{ github.sha }}
           path: komiremote-macos-output/
           retention-days: 7
           if-no-files-found: error

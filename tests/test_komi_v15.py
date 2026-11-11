@@ -127,7 +127,7 @@ class KomiV15Update(unittest.TestCase):
         version = re.search(r"kKomiCurrentVersion = '([\d.]+)'", logic).group(1)
         build = re.search(r"kKomiCurrentBuild = (\d+);", logic).group(1)
         self.assertRegex(read("flutter/pubspec.yaml"), rf"(?m)^version: {re.escape(version)}\+{build}$")
-        self.assertEqual((version, build), ("1.5.1", "71"))
+        self.assertEqual((version, build), ("1.5.1", "89"))
 
 
 class KomiV15Logos(unittest.TestCase):

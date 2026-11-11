@@ -6,11 +6,18 @@
 	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
+	<!-- Ad-hoc signatures have no TeamIdentifier. Hardened Runtime otherwise
+	     rejects liblibrustdesk.dylib at process start (library validation).
+	     This is not a notarization substitute and does not disable the runtime. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
 	<key>com.apple.security.device.camera</key>
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
 	<true/>
 </dict>
 </plist>
