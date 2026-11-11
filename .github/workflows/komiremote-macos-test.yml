@@ -87,7 +87,7 @@ jobs:
       fail-fast: false
       matrix:
         job:
-          - { os: macos-14, target: aarch64-apple-darwin, arch: arm64, extra-build-args: "--screencapturekit" }
+          - { os: macos-15, target: aarch64-apple-darwin, arch: arm64, extra-build-args: "--screencapturekit" }
           - { os: macos-15-intel, target: x86_64-apple-darwin, arch: x86_64, extra-build-args: "" }
     defaults:
       run:
