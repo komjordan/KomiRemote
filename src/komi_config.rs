@@ -1,4 +1,5 @@
-//! Public Windows/macOS fork defaults. No disk, network, credentials or overwrite settings.
+//! Public Windows/macOS/iOS fork defaults. No disk, network, credentials or overwrite settings.
+//! iOS uses the same defaults so the controller is Komi Remote, not RustDesk. It does not add a host role.
 use std::collections::HashMap;
 use std::sync::{Once, RwLock};
 

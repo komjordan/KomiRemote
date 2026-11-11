@@ -2362,10 +2362,10 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
     ThrottledInterval::new(i)
 }
 
-/// Install public fork defaults before lazy config/path access in every Windows/macOS entry.
+/// Install public fork defaults before lazy config/path access on Windows, macOS and the iOS controller.
 /// This deliberately does not touch persisted options or the signed custom.txt verifier.
 pub(crate) fn initialize_komi_defaults() {
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "ios"))]
     {
         static INIT: std::sync::Once = std::sync::Once::new();
         crate::komi_config::initialize(

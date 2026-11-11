@@ -110,6 +110,26 @@ void main() {
     }
   });
 
+  test('iOS read-only dialing rejects a mismatched active server before lookup',
+      () async {
+    expect(
+        () => verifyKomiActiveServer('other.example', '217.154.20.200'),
+        throwsA(isA<PublicNameException>()));
+    verifyKomiActiveServer('217.154.20.200', '217.154.20.200');
+    verifyKomiActiveServer('217.154.20.200:21116', '217.154.20.200');
+    await expectLater(
+        resolveKomiConnectionId('alice1',
+            isKomi: true,
+            isKnownPeer: (_) => false,
+            registry: const KomiNameRegistry(
+                Uri.parse('https://noms.komjordan.fr/'), '217.154.20.200'),
+            verifyActiveServer: (_) async {
+              throw const PublicNameException(
+                  'Serveur RustDesk différent du registre');
+            }),
+        throwsA(isA<PublicNameException>()));
+  });
+
   test('original change-ID dialog maps submit to register, rename or no-op',
       () {
     expect(komiNameDialogOperation(null, 'joe'), 'register');

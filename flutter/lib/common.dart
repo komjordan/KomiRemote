@@ -2596,16 +2596,28 @@ connect(BuildContext context, String id,
   id = id.replaceAll(' ', '');
   if (isKomiRemote) {
     try {
-      id = await resolveKomiConnectionId(id,
-          isKomi: true,
-          registry: KomiNameRegistry.configured(), isKnownPeer: (candidate) {
-        try {
-          final peer = jsonDecode(bind.mainGetPeerSync(id: candidate));
-          return peer is Map && peer['info'] is Map;
-        } catch (_) {
-          return false;
-        }
-      });
+      if (isIOS) {
+        final directory = KomiIosDirectoryContext.read();
+        id = await resolveKomiConnectionId(id,
+            isKomi: true,
+            registry: KomiNameRegistry.configured(),
+            verifyActiveServer: (namespace) async {
+              directory.verify(namespace);
+            },
+            isKnownPeer: (candidate) =>
+                directory.storedPeers.contains(candidate));
+      } else {
+        id = await resolveKomiConnectionId(id,
+            isKomi: true,
+            registry: KomiNameRegistry.configured(), isKnownPeer: (candidate) {
+          try {
+            final peer = jsonDecode(bind.mainGetPeerSync(id: candidate));
+            return peer is Map && peer['info'] is Map;
+          } catch (_) {
+            return false;
+          }
+        });
+      }
     } on PublicNameException catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)

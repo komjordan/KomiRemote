@@ -39,6 +39,58 @@ class PublicNameRecord {
 typedef _NamesCall = Pointer<Utf8> Function(Pointer<Utf8>);
 typedef _NamesFree = void Function(Pointer<Utf8>);
 
+/// Exact rendezvous comparison used by the native Windows namespace policy.
+void verifyKomiActiveServer(String activeServer, String namespace) {
+  if (activeServer != namespace && activeServer != '$namespace:21116') {
+    throw const PublicNameException('Serveur RustDesk différent du registre');
+  }
+}
+
+/// iOS read-only adapter. The static library is already linked into the app, so
+/// symbols are resolved in-process. Never persist the result or create a key.
+class KomiIosDirectoryContext {
+  final String activeServer;
+  final Set<String> storedPeers;
+  const KomiIosDirectoryContext(this.activeServer, this.storedPeers);
+
+  static KomiIosDirectoryContext read() {
+    if (!Platform.isIOS) {
+      throw const PublicNameException('iOS uniquement');
+    }
+    try {
+      final library = DynamicLibrary.process();
+      final call = library.lookupFunction<Pointer<Utf8> Function(),
+          Pointer<Utf8> Function()>('komi_ios_directory_context');
+      final free = library.lookupFunction<Void Function(Pointer<Utf8>),
+          void Function(Pointer<Utf8>)>('komi_ios_directory_context_free');
+      final output = call();
+      if (output.address == 0) {
+        throw const PublicNameException('Contexte serveur indisponible');
+      }
+      try {
+        final data = jsonDecode(output.toDartString());
+        if (data is! Map ||
+            data['active_server'] is! String ||
+            data['stored_peers'] is! List ||
+            !(data['stored_peers'] as List).every((id) => id is String)) {
+          throw const PublicNameException('Contexte serveur invalide');
+        }
+        return KomiIosDirectoryContext(data['active_server'] as String,
+            (data['stored_peers'] as List).cast<String>().toSet());
+      } finally {
+        free(output);
+      }
+    } on PublicNameException {
+      rethrow;
+    } catch (_) {
+      throw const PublicNameException('Contexte serveur indisponible');
+    }
+  }
+
+  void verify(String namespace) =>
+      verifyKomiActiveServer(activeServer, namespace);
+}
+
 // Native owns the signing key, TLS requests and validation. Never log payloads.
 Map<String, dynamic> _invokeKomiNames(String request) {
   if (!Platform.isWindows && !Platform.isMacOS)

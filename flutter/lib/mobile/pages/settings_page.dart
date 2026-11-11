@@ -1025,7 +1025,9 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
           tiles: [
             SettingsTile(
                 onPressed: (context) async {
-                  await launchUrl(Uri.parse(url));
+                  await launchUrl(Uri.parse(isIOS
+                      ? 'https://github.com/komjordan/KomiRemote'
+                      : url));
                 },
                 title: Text(translate("Version: ") + version),
                 value: Padding(
@@ -1171,17 +1173,19 @@ void showThemeSettings(OverlayDialogManager dialogManager) async {
 void showAbout(OverlayDialogManager dialogManager) {
   dialogManager.show((setState, close, context) {
     return CustomAlertDialog(
-      title: Text(translate('About RustDesk')),
+      title: Text(isIOS ? 'Komi Remote' : translate('About RustDesk')),
       content: Wrap(direction: Axis.vertical, spacing: 12, children: [
         Text('Version: $version'),
         InkWell(
             onTap: () async {
-              const url = 'https://rustdesk.com/';
+              final url = isIOS
+                  ? 'https://github.com/komjordan/KomiRemote'
+                  : 'https://rustdesk.com/';
               await launchUrl(Uri.parse(url));
             },
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('rustdesk.com',
+              child: Text(isIOS ? 'github.com/komjordan/KomiRemote' : 'rustdesk.com',
                   style: TextStyle(
                     decoration: TextDecoration.underline,
                   )),

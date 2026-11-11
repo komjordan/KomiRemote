@@ -87,6 +87,14 @@ class _ConnectionPageState extends State<ConnectionPage> {
           if (!bind.isCustomClient() && !isIOS)
             Obx(() => _buildUpdateUI(stateGlobal.updateUrl.value)),
           _buildRemoteIDTextField(),
+          if (isIOS)
+            const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 8, left: 4, right: 4),
+              child: Text(
+                'Contrôleur uniquement : connexion à un PC, affichage et saisie. Le partage d\'écran de cet iPhone n\'est pas disponible. La caméra et le micro de l\'iPhone ne sont pas émis.',
+                style: TextStyle(fontSize: 13, color: MyTheme.darkGray),
+              ),
+            ),
         ])),
         SliverFillRemaining(
           hasScrollBody: true,

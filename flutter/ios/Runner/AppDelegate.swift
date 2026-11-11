@@ -9,6 +9,12 @@ import Flutter
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     dummyMethodToEnforceBundling();
+    // Pull the read-only name resolver into the unsigned static link. The
+    // result is discarded: Flutter has not set the iOS data directory yet.
+    let directory = komi_ios_directory_context()
+    if directory != nil {
+      komi_ios_directory_context_free(directory)
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
     

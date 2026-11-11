@@ -44,8 +44,41 @@ mod clipboard;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod core_main;
 mod custom_server;
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "ios"))]
 mod komi_config;
+
+/// Read-only iOS name-dialing context. Uses the engine rendezvous server and
+/// peer files that actually exist. No signing key, no config write, no host role.
+#[cfg(target_os = "ios")]
+#[no_mangle]
+pub extern "C" fn komi_ios_directory_context() -> *mut std::os::raw::c_char {
+    use hbb_common::config::{Config, PeerConfig};
+    let result = std::panic::catch_unwind(|| {
+        common::initialize_komi_defaults();
+        let peers: Vec<String> = PeerConfig::get_vec_id_modified_time_path(&None)
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        serde_json::json!({
+            "active_server": Config::get_rendezvous_server(),
+            "stored_peers": peers,
+        })
+        .to_string()
+    });
+    result
+        .ok()
+        .and_then(|value| std::ffi::CString::new(value).ok())
+        .map_or(std::ptr::null_mut(), |value| value.into_raw())
+}
+
+/// Free only the pointer returned by komi_ios_directory_context, once.
+#[cfg(target_os = "ios")]
+#[no_mangle]
+pub unsafe extern "C" fn komi_ios_directory_context_free(value: *mut std::os::raw::c_char) {
+    if !value.is_null() {
+        drop(std::ffi::CString::from_raw(value));
+    }
+}
 pub mod komi_device_name;
 pub mod komi_cursor_tag;
 mod komi_video_call;
